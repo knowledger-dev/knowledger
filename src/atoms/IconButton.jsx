@@ -29,4 +29,5 @@ export default function IconButton({ children, onClick, className }) {
 IconButton.propTypes = {
   children: PropTypes.node.isRequired,
   onClick: PropTypes.func.isRequired,
+  className: PropTypes.string,
 };

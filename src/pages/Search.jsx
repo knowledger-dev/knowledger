@@ -35,7 +35,7 @@ export default function Search() {
   }
 
   return (
-    <section className="font-inter font-semibold">
+    <section className="font-inter font-semibold w-full">
       <IconButton onClick={handleClick} className="absolute right-0 p-5">
         {isDarkMode ? (
           <AiOutlineSun size={25} className="text-white" />
