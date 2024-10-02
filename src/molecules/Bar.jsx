@@ -11,7 +11,11 @@ import { useState } from "react";
 import { GiBrain } from "react-icons/gi";
 
 // Main functional component
-export default function Bar() {
+import PropTypes from "prop-types";
+
+export default function Bar({ isDarkMode }) {
+  // State to keep track of dark mode, initialized from localStorage
+
   // State to keep track of Capture Mode, initialized from localStorage
   const [isCaptureMode, setIsCaptureMode] = useState(() => {
     const savedMode = localStorage.getItem("isCaptureMode");
@@ -55,7 +59,7 @@ export default function Bar() {
   return (
     <>
       <section
-        className={`w-[40%] flex justify-center py-2 px-4 bg-slate-300 rounded-3xl dark:bg-gray-800 gap-2 transition-shadow duration-300 ${
+        className={`w-[40%] flex justify-center py-2 px-4 bg-slate-300 rounded-3xl dark:bg-gray-800 gap-2 transition-[shadow,transform] duration-300 ${
           isFocused
             ? "shadow-lg shadow-purple-500/50 transform -translate-y-2 transition-[shadow,transform] duration-300"
             : "transition-[shadow,transform] duration-300"
@@ -79,10 +83,15 @@ export default function Bar() {
         {/* Change text input placeholder depending on Capture Mode */}
         <input
           id="search"
-          className="w-[80%] py-4 px-2 bg-slate-300 text-black dark:text-white dark:bg-gray-800 rounded-2xl text-lg focus:outline-none focus:ring-0 transition-none duration-300"
+          className="w-[80%] py-4 px-2 bg-slate-300 text-black dark:text-white dark:bg-gray-800 rounded-2xl text-lg focus:outline-none focus:ring-0 transition-none duration-300 autofill:bg-slate-300 dark:autofill:bg-gray-800"
           placeholder={isCaptureMode ? "Capture your thoughts..." : "Search..."}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          style={{
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: `${isDarkMode ? "black" : "white"}`,
+            transition: "background-color 5000s ease-in-out 0s",
+          }}
         />
 
         {/* Render different icons depending on Capture Mode */}
@@ -121,3 +130,7 @@ export default function Bar() {
     </>
   );
 }
+
+Bar.propTypes = {
+  isDarkMode: PropTypes.bool.isRequired,
+};

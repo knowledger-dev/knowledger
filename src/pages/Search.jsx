@@ -44,10 +44,10 @@ export default function Search() {
         )}
       </IconButton>
       <div className="flex flex-col justify-center items-center w-[100%] h-screen bg-white dark:bg-black">
-        <h1 className="text-5xl p-10 text-black dark:text-white">
+        <h1 className="text-5xl p-10 text-black dark:text-white text-center max-md:text-xl">
           Hi, what do you want to know?
         </h1>
-        <Bar />
+        <Bar isDarkMode={isDarkMode} />
       </div>
     </section>
   );
