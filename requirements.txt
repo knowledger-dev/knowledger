@@ -1,0 +1,6 @@
+fastapi
+neo4j
+sentence-transformers
+python-dotenv
+nltk
+uvicorn  # If using for running FastAPI
