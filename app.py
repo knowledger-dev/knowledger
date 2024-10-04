@@ -1,3 +1,5 @@
+# --- START OF FILE app.py ---
+
 import os
 import re
 import logging
@@ -31,16 +33,14 @@ NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
-# LLM (Cohere) configuration
-COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-LLM_MODEL = os.getenv("LLM_MODEL", "command-xlarge-nightly")
-LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", 0.7))
-LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", 4096))
+# Gemini API Configuration
+GENIUS_API_KEY = os.getenv("GENIUS_API_KEY")  # Ensure this is set in .env
+GENIUS_MODEL = os.getenv("GENIUS_MODEL", "gemini-1.5-flash")
 
 # Similarity thresholds
 SIMILARITY_THRESHOLD_RECALCULATE_ALL = float(os.getenv("SIMILARITY_THRESHOLD_RECALCULATE_ALL", 0.3875))
 SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS = float(os.getenv("SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS", 0.3875))
-SIMILARITY_THRESHOLD_RAG = float(os.getenv("SIMILARITY_THRESHOLD_RAG", 0.3))
+SIMILARITY_THRESHOLD_RAG = 0.1
 
 # DBSCAN parameters
 DBSCAN_EPS = float(os.getenv("DBSCAN_EPS", 1.1725))
@@ -48,7 +48,7 @@ DBSCAN_MIN_SAMPLES = int(os.getenv("DBSCAN_MIN_SAMPLES", 2))
 
 # RAG configuration
 RAG_MAX_CONTEXT_LENGTH = int(os.getenv("RAG_MAX_CONTEXT_LENGTH", 128000))  # Adjusted to be within typical token limits
-RAG_DEFAULT_MAX_TOKENS = int(os.getenv("RAG_DEFAULT_MAX_TOKENS", 4096))  # Adjusted for typical LLMs
+RAG_DEFAULT_MAX_TOKENS = 4096  # Adjusted for typical LLMs
 
 # -----------------------------------------------------------------------------
 # Initialize Logging
@@ -110,6 +110,7 @@ class NoteOutput(BaseModel):
     timestamp: datetime
     commonness: int
     pagerank: float
+    summary: str = ""  # New field for AI-generated insights
 
 class QueryInput(BaseModel):
     query: str
@@ -157,55 +158,36 @@ def preprocess_for_embedding(text: str) -> str:
 # LLM Client and Helper Functions
 # -----------------------------------------------------------------------------
 
+import google.generativeai as genai  # Importing Gemini API client
+
 class LLMClient:
-    def __init__(self, client, model: str):
-        self.client = client
-        self.model = model
+    def __init__(self, model: str):
+        self.model = genai.GenerativeModel(model)
 
-    def chat(self, messages: List[Dict[str, str]]) -> str:
+    def generate_content(self, prompt: str, stream: bool = False, generation_config: Dict[str, Any] = None):
         """
-        Sends a conversation to Cohere's Chat API and returns the assistant's reply.
+        Generates content using Gemini API.
+        Supports both streaming and non-streaming responses.
         """
-        # Build the chat history
-        chat_history = []
-        for message in messages:
-            role = message.get("role", "user").upper()
-            text = message.get("content", "")
-            if role == "SYSTEM":
-                # Cohere's API doesn't support a system role directly, so include the content in the first user message
-                if chat_history and chat_history[0]["role"] == "USER":
-                    chat_history[0]["text"] = f"{text}\n{chat_history[0]['text']}"
-                else:
-                    chat_history.insert(0, {"role": "USER", "text": text})
-            elif role == "USER":
-                chat_history.append({"role": "USER", "text": text})
-            elif role == "ASSISTANT":
-                chat_history.append({"role": "ASSISTANT", "text": text})
-            else:
-                chat_history.append({"role": "USER", "text": text})
+        if generation_config:
+            gen_config = genai.types.GenerationConfig(**generation_config)
+        else:
+            gen_config = None
 
-        # The last message from the user
-        last_message = chat_history[-1]["text"] if chat_history else ""
+        if stream:
+            response = self.model.generate_content(prompt, stream=True, generation_config=gen_config)
+            return response  # This should be a generator
+        else:
+            response = self.model.generate_content(prompt, stream=False, generation_config=gen_config)
+            return response.text.strip()
 
-        response = self.client.chat(
-            model=self.model,
-            chat_history=chat_history[:-1],  # Exclude the last message
-            message=last_message,
-            temperature=LLM_TEMPERATURE,
-            max_tokens=LLM_MAX_TOKENS
-        )
-        return response.text.strip()
-
-# Initialize Cohere Client lazily
+# Initialize Gemini Client lazily
 def get_llm_client():
     if not hasattr(get_llm_client, "client"):
-        if not COHERE_API_KEY:
-            raise ValueError("COHERE_API_KEY environment variable not set")
-        import cohere  # Lazy import
-        get_llm_client.client = LLMClient(
-            client=cohere.Client(api_key=COHERE_API_KEY),
-            model=LLM_MODEL
-        )
+        if not GENIUS_API_KEY:
+            raise ValueError("GENIUS_API_KEY environment variable not set")
+        genai.configure(api_key=GENIUS_API_KEY)
+        get_llm_client.client = LLMClient(model=GENIUS_MODEL)
     return get_llm_client.client
 
 # -----------------------------------------------------------------------------
@@ -227,7 +209,7 @@ def generate_note_id() -> str:
     return os.urandom(8).hex()
 
 def create_note_in_neo4j(note_id: str, content: str, processed_content: str,
-                         embedding: List[float], timestamp: datetime):
+                         embedding: List[float], timestamp: datetime, summary: str = ""):
     with neo4j_conn.driver.session() as session:
         session.run("""
         CREATE (n:Note {
@@ -237,14 +219,16 @@ def create_note_in_neo4j(note_id: str, content: str, processed_content: str,
             embedding: $embedding,
             timestamp: $timestamp,
             commonness: 0,
-            pagerank: 0.0
+            pagerank: 0.0,
+            summary: $summary
         })
         """,
         id=note_id,
         content=content,
         processed_content=processed_content,
         embedding=embedding,
-        timestamp=timestamp.isoformat())
+        timestamp=timestamp.isoformat(),
+        summary=summary)
 
 def generate_cluster_label(cluster_id: int) -> str:
     return f"Cluster_{cluster_id}"
@@ -261,31 +245,22 @@ def generate_cluster_content(note_ids: List[str]) -> str:
 
 def generate_cluster_title(note_ids: List[str]) -> str:
     combined_content = generate_cluster_content(note_ids)
-    messages = [
-        {"role": "system", "content": "You are an AI assistant that generates clear and descriptive titles."},
-        {"role": "user", "content": f"Generate a clear and descriptive title for the following content:\n\n{combined_content}"}
-    ]
+    prompt = f"Generate a concise and descriptive title for the following content:\n{combined_content}"
     llm_client = get_llm_client()
-    title = llm_client.chat(messages)
+    title = llm_client.generate_content(prompt)
     return title if title else "Untitled Cluster"
 
 def generate_cluster_summary(note_ids: List[str]) -> str:
     combined_content = generate_cluster_content(note_ids)
-    messages = [
-        {"role": "system", "content": "You are an AI assistant that summarizes content concisely."},
-        {"role": "user", "content": f"Summarize the following content in a few sentences:\n\n{combined_content}"}
-    ]
+    prompt = f"Summarize the following content in a few sentences:\n{combined_content}"
     llm_client = get_llm_client()
-    summary = llm_client.chat(messages)
+    summary = llm_client.generate_content(prompt)
     return summary
 
 def refine_query(query: str) -> str:
-    messages = [
-        {"role": "system", "content": "You are an AI assistant that refines user queries to improve search results."},
-        {"role": "user", "content": f"Please refine the following query for better search results:\n\n{query}"}
-    ]
+    prompt = f"Please refine the following query for better search results:\n{query}"
     llm_client = get_llm_client()
-    refined_query = llm_client.chat(messages)
+    refined_query = llm_client.generate_content(prompt)
     return refined_query if refined_query else query
 
 def get_dynamic_context(results) -> str:
@@ -493,8 +468,8 @@ def perform_clustering():
         cluster_data = []
         for label, members in clusters.items():
             cluster_label = generate_cluster_label(label)
-            title = generate_cluster_title(members)       # Generate cluster title using Cohere
-            summary = generate_cluster_summary(members)   # Generate cluster summary using Cohere
+            title = generate_cluster_title(members)       # Generate cluster title using Gemini
+            summary = generate_cluster_summary(members)   # Generate cluster summary using Gemini
             cluster_data.append({
                 'label': cluster_label,
                 'title': title,
@@ -580,12 +555,18 @@ async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks, 
         embedding = await asyncio.to_thread(model.encode, processed_content)
         embedding = embedding.tolist()
 
+        # Generate summary using Gemini API
+        llm_client = get_llm_client()
+        summary_prompt = f"Summarize the following content:\n{processed_content}"
+        summary = llm_client.generate_content(prompt=summary_prompt)
+
         create_note_in_neo4j(
             note_id,
             note_input.content,
             processed_content,
             embedding,
-            note_input.timestamp
+            note_input.timestamp,
+            summary=summary
         )
 
         # Update relationships and PageRank in the background
@@ -596,7 +577,7 @@ async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks, 
             result = session.run("""
             MATCH (n:Note {id: $id})
             RETURN n.id as id, n.content as content, n.processed_content as processed_content,
-                   n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank
+                   n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank, n.summary as summary
             """, id=note_id).single()
 
             return NoteOutput(
@@ -605,7 +586,8 @@ async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks, 
                 processed_content=result["processed_content"],
                 timestamp=datetime.fromisoformat(result["timestamp"]),
                 commonness=result["commonness"],
-                pagerank=result["pagerank"]
+                pagerank=result["pagerank"],
+                summary=result.get("summary", "")
             )
 
     except Exception as e:
@@ -656,7 +638,7 @@ async def query_notes(query_input: QueryInput, model=Depends(get_sentence_transf
             ORDER BY similarity DESC
             LIMIT $limit
             RETURN n.id as id, n.content as content, n.processed_content as processed_content,
-                   n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank
+                   n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank, n.summary as summary
             """, query_embedding=query_embedding, similarity_threshold=SIMILARITY_THRESHOLD_RAG, limit=query_input.limit)
 
             return [NoteOutput(
@@ -665,7 +647,8 @@ async def query_notes(query_input: QueryInput, model=Depends(get_sentence_transf
                 processed_content=record["processed_content"],
                 timestamp=datetime.fromisoformat(record["timestamp"]),
                 commonness=record["commonness"],
-                pagerank=record["pagerank"]
+                pagerank=record["pagerank"],
+                summary=record.get("summary", "")
             ) for record in results]
 
     except Exception as e:
@@ -683,7 +666,7 @@ async def get_note(note_id: str):
             MATCH (n:Note {id: $id})
             SET n.commonness = n.commonness + 1
             RETURN n.id as id, n.content as content, n.processed_content as processed_content,
-                   n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank
+                   n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank, n.summary as summary
             """, id=note_id).single()
 
             if not result:
@@ -695,7 +678,8 @@ async def get_note(note_id: str):
                 processed_content=result["processed_content"],
                 timestamp=datetime.fromisoformat(result["timestamp"]),
                 commonness=result["commonness"],
-                pagerank=result["pagerank"]
+                pagerank=result["pagerank"],
+                summary=result.get("summary", "")
             )
 
     except Exception as e:
@@ -755,26 +739,26 @@ async def test_neo4j():
         logger.error(f"Neo4j test failed: {e}")
         raise HTTPException(status_code=500, detail="Neo4j test failed.")
 
-@app.get("/test/cohere")
-async def test_cohere():
+@app.get("/test/genius")
+async def test_genius():
     """
-    Test Cohere client by sending a simple message.
+    Test Gemini API client by generating a simple content.
     """
     try:
         llm_client = get_llm_client()
-        test_message = [{"role": "user", "content": "Hello"}]
-        response = await asyncio.to_thread(llm_client.chat, test_message)
-        return {"cohere": "Connection successful.", "response": response}
+        response = llm_client.generate_content("Write a test summary.")
+        return {"gemini": "Connection successful.", "response": response}
     except Exception as e:
-        logger.error(f"Cohere test failed: {e}")
-        raise HTTPException(status_code=500, detail="Cohere client test failed.")
+        logger.error(f"Gemini API test failed: {e}")
+        raise HTTPException(status_code=500, detail="Gemini API test failed.")
 
 @app.get("/test/model")
-async def test_model(model=Depends(get_sentence_transformer)):
+async def test_model():
     """
     Test SentenceTransformer model by encoding a sample text.
     """
     try:
+        model = await get_sentence_transformer()
         sample_text = "Test encoding"
         embedding = await asyncio.to_thread(model.encode, sample_text)
         return {
@@ -823,25 +807,31 @@ async def rag_query(rag_query_input: RAGQueryInput, model=Depends(get_sentence_t
             results = list(results)
 
         if not results:
-            return {"answer": "No relevant information found to answer your query."}
+            return {"answer": "No relevant information found to answer your query.", "referenced_note_ids": []}
 
         # Prepare the context from the retrieved notes
         context = get_dynamic_context(results)
+        referenced_note_ids = [record["id"] for record in results]
 
         # Ensure context length is within limits
         if len(context) > RAG_MAX_CONTEXT_LENGTH:
             context = context[:RAG_MAX_CONTEXT_LENGTH]
 
-        # Prepare the messages for the LLM
-        messages = [
-            {"role": "system", "content": "You are an assistant that answers questions based on the provided context."},
-            {"role": "user", "content": f"Context:\n{context}\nQuestion:\n{rag_query_input.query}"}
-        ]
-
-        # Generate the response
+        # Generate the response using Gemini API
+        prompt = f"Context:\n{context}\nQuestion:\n{rag_query_input.query}"
         llm_client = get_llm_client()
-        answer = await asyncio.to_thread(llm_client.chat, messages)
-        return {"answer": answer}
+        answer = llm_client.generate_content(
+            prompt=prompt,
+            stream=False,
+            generation_config={
+                "candidate_count": 1,
+                "stop_sequences": ["x"],
+                "max_output_tokens": rag_query_input.max_tokens,
+                "temperature": 1.0,
+            }
+        )
+
+        return {"answer": answer, "referenced_note_ids": referenced_note_ids}
 
     except Exception as e:
         logger.error(f"Error in RAG query: {e}")
@@ -854,3 +844,5 @@ async def rag_query(rag_query_input: RAGQueryInput, model=Depends(get_sentence_t
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=APP_HOST, port=APP_PORT)
+
+# --- END OF FILE app.py ---
