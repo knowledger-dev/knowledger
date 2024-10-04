@@ -9,50 +9,66 @@ from datetime import datetime
 from typing import Dict, Any, List
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from functools import lru_cache
 
 # -----------------------------------------------------------------------------
-# Configuration Variables
+# CONFIGURATION VARIABLES
 # -----------------------------------------------------------------------------
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Logging configuration
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+# -------------------- Logging Configuration --------------------
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # e.g., DEBUG, INFO, WARNING, ERROR
 
-# FastAPI configuration
+# -------------------- FastAPI Configuration --------------------
 APP_TITLE = os.getenv("APP_TITLE", "Note-Taking API with LLM Features")
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", 8000))
 
-# Neo4j configuration
+# -------------------- Neo4j Configuration --------------------
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
-# Gemini API Configuration
-GENIUS_API_KEY = os.getenv("GENIUS_API_KEY")  # Ensure this is set in .env
-GENIUS_MODEL = os.getenv("GENIUS_MODEL", "gemini-1.5-flash")
+# -------------------- Gemini API Configuration --------------------
+GENIUS_API_KEY = os.getenv("GENIUS_API_KEY_1")  # Ensure this is set in .env
+GENIUS_API_KEY_2 = os.getenv("GENIUS_API_KEY_2")  # Ensure this is set in .env
+GENIUS_API_KEY_3 = os.getenv("GENIUS_API_KEY_3")  # Ensure this is set in .env
+GENIUS_MODEL = "gemini-1.5-flash-8b"
 
-# Similarity thresholds
+# -------------------- Similarity Thresholds --------------------
 SIMILARITY_THRESHOLD_RECALCULATE_ALL = float(os.getenv("SIMILARITY_THRESHOLD_RECALCULATE_ALL", 0.3875))
 SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS = float(os.getenv("SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS", 0.3875))
-SIMILARITY_THRESHOLD_RAG = 0.1
+SIMILARITY_THRESHOLD_RAG = float(os.getenv("SIMILARITY_THRESHOLD_RAG", 0.1))
 
-# DBSCAN parameters
+# -------------------- DBSCAN Parameters --------------------
 DBSCAN_EPS = float(os.getenv("DBSCAN_EPS", 1.1725))
 DBSCAN_MIN_SAMPLES = int(os.getenv("DBSCAN_MIN_SAMPLES", 2))
 
-# RAG configuration
+# -------------------- RAG Configuration --------------------
 RAG_MAX_CONTEXT_LENGTH = int(os.getenv("RAG_MAX_CONTEXT_LENGTH", 128000))  # Adjusted to be within typical token limits
-RAG_DEFAULT_MAX_TOKENS = 4096  # Adjusted for typical LLMs
+RAG_DEFAULT_MAX_TOKENS = int(os.getenv("RAG_DEFAULT_MAX_TOKENS", 4096))  # Adjusted for typical LLMs
+
+# -------------------- PageRank Configuration --------------------
+PAGERANK_ALPHA = float(os.getenv("PAGERANK_ALPHA", 0.85))  # Damping factor for PageRank
+
+# -------------------- SentenceTransformer Model --------------------
+SENTENCE_TRANSFORMER_MODEL = os.getenv("SENTENCE_TRANSFORMER_MODEL", "all-MiniLM-L6-v2")
+
+# -------------------- Gemini Generation Configuration --------------------
+GENIUS_GENERATION_CONFIG = {
+    "candidate_count": int(os.getenv("GENIUS_CANDIDATE_COUNT", 1)),
+    # "stop_sequences": os.getenv("GENIUS_STOP_SEQUENCES").split(","),
+    "temperature": float(os.getenv("GENIUS_TEMPERATURE", 1.0)),
+}
 
 # -----------------------------------------------------------------------------
-# Initialize Logging
+# END OF CONFIGURATION VARIABLES
 # -----------------------------------------------------------------------------
+
+# Initialize Logging
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
@@ -198,7 +214,7 @@ async def get_sentence_transformer():
     if not hasattr(get_sentence_transformer, "model"):
         from sentence_transformers import SentenceTransformer  # Lazy import
         loop = asyncio.get_event_loop()
-        get_sentence_transformer.model = await loop.run_in_executor(None, SentenceTransformer, 'all-MiniLM-L6-v2')
+        get_sentence_transformer.model = await loop.run_in_executor(None, SentenceTransformer, SENTENCE_TRANSFORMER_MODEL)
     return get_sentence_transformer.model
 
 # -----------------------------------------------------------------------------
@@ -320,8 +336,7 @@ def compute_pagerank():
 
         # Compute PageRank using NetworkX
         logger.info("Computing PageRank scores...")
-        pagerank_alpha = float(os.getenv("PAGERANK_ALPHA", 0.85))
-        pagerank_scores = nx.pagerank(G, alpha=pagerank_alpha)
+        pagerank_scores = nx.pagerank(G, alpha=PAGERANK_ALPHA)
 
         # Update PageRank scores back to Neo4j
         logger.info("Updating PageRank scores in Neo4j...")
@@ -368,7 +383,7 @@ def recalculate_all():
 
         # Lazy import SentenceTransformer here
         from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer('all-MiniLM-L6-v2')
+        model = SentenceTransformer(SENTENCE_TRANSFORMER_MODEL)
 
         for record in missing_embeddings:
             note_id = record["id"]
@@ -823,12 +838,7 @@ async def rag_query(rag_query_input: RAGQueryInput, model=Depends(get_sentence_t
         answer = llm_client.generate_content(
             prompt=prompt,
             stream=False,
-            generation_config={
-                "candidate_count": 1,
-                "stop_sequences": ["x"],
-                "max_output_tokens": rag_query_input.max_tokens,
-                "temperature": 1.0,
-            }
+            generation_config=GENIUS_GENERATION_CONFIG
         )
 
         return {"answer": answer, "referenced_note_ids": referenced_note_ids}
