@@ -1,23 +1,15 @@
 import os
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel, Field
+import re
+import logging
+import asyncio
+import atexit
 from datetime import datetime
 from typing import Dict, Any, List
-from functools import lru_cache
-import logging
-import re
-import asyncio
-import cohere
-from neo4j import GraphDatabase
-from sentence_transformers import SentenceTransformer
-import networkx as nx
-from sklearn.cluster import DBSCAN
-import numpy as np
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-import atexit
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from functools import lru_cache
 
 # -----------------------------------------------------------------------------
 # Configuration Variables
@@ -48,7 +40,7 @@ LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", 4096))
 # Similarity thresholds
 SIMILARITY_THRESHOLD_RECALCULATE_ALL = float(os.getenv("SIMILARITY_THRESHOLD_RECALCULATE_ALL", 0.3875))
 SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS = float(os.getenv("SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS", 0.3875))
-SIMILARITY_THRESHOLD_RAG = float(os.getenv("SIMILARITY_THRESHOLD_RAG", 0.5))
+SIMILARITY_THRESHOLD_RAG = float(os.getenv("SIMILARITY_THRESHOLD_RAG", 0.3))
 
 # DBSCAN parameters
 DBSCAN_EPS = float(os.getenv("DBSCAN_EPS", 1.1725))
@@ -61,7 +53,6 @@ RAG_DEFAULT_MAX_TOKENS = int(os.getenv("RAG_DEFAULT_MAX_TOKENS", 4096))  # Adjus
 # -----------------------------------------------------------------------------
 # Initialize Logging
 # -----------------------------------------------------------------------------
-
 logging.basicConfig(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
@@ -72,23 +63,10 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title=APP_TITLE)
 
 # -----------------------------------------------------------------------------
-# Initialize SentenceTransformer
-# -----------------------------------------------------------------------------
-
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# -----------------------------------------------------------------------------
-# Initialize Cohere Client
-# -----------------------------------------------------------------------------
-
-if not COHERE_API_KEY:
-    raise ValueError("COHERE_API_KEY environment variable not set")
-
-cohere_client = cohere.Client(api_key=COHERE_API_KEY)
-
-# -----------------------------------------------------------------------------
 # Initialize Neo4j Connection
 # -----------------------------------------------------------------------------
+
+from neo4j import GraphDatabase  # Imported here since it's lightweight
 
 class Neo4jConnection:
     def __init__(self):
@@ -110,8 +88,9 @@ class Neo4jConnection:
 
     def create_constraints(self):
         with self.driver.session() as session:
-            session.run("CREATE CONSTRAINT unique_note_id IF NOT EXISTS FOR (n:Note) REQUIRE n.id IS UNIQUE")
-            session.run("CREATE CONSTRAINT unique_cluster_label IF NOT EXISTS FOR (c:Cluster) REQUIRE c.label IS UNIQUE")
+            # Use IF NOT EXISTS to avoid redundant operations
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (n:Note) REQUIRE n.id IS UNIQUE")
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Cluster) REQUIRE c.label IS UNIQUE")
 
 neo4j_conn = Neo4jConnection()
 neo4j_conn.create_constraints()
@@ -217,44 +196,32 @@ class LLMClient:
         )
         return response.text.strip()
 
+# Initialize Cohere Client lazily
+def get_llm_client():
+    if not hasattr(get_llm_client, "client"):
+        if not COHERE_API_KEY:
+            raise ValueError("COHERE_API_KEY environment variable not set")
+        import cohere  # Lazy import
+        get_llm_client.client = LLMClient(
+            client=cohere.Client(api_key=COHERE_API_KEY),
+            model=LLM_MODEL
+        )
+    return get_llm_client.client
 
-llm_client = LLMClient(
-    client=cohere_client,
-    model=LLM_MODEL
-)
+# -----------------------------------------------------------------------------
+# Dependency Injection for SentenceTransformer
+# -----------------------------------------------------------------------------
 
-def generate_cluster_content(note_ids: List[str]) -> str:
-    with neo4j_conn.driver.session() as session:
-        contents = session.run("""
-        MATCH (n:Note)
-        WHERE n.id IN $ids
-        RETURN n.content AS content
-        """, ids=note_ids)
-        combined_content = "\n".join([record["content"] for record in contents])
-    return combined_content
+async def get_sentence_transformer():
+    if not hasattr(get_sentence_transformer, "model"):
+        from sentence_transformers import SentenceTransformer  # Lazy import
+        loop = asyncio.get_event_loop()
+        get_sentence_transformer.model = await loop.run_in_executor(None, SentenceTransformer, 'all-MiniLM-L6-v2')
+    return get_sentence_transformer.model
 
-def generate_cluster_label(cluster_id: int) -> str:
-    return f"Cluster_{cluster_id}"
-
-def generate_cluster_title(note_ids: List[str]) -> str:
-    combined_content = generate_cluster_content(note_ids)
-    messages = [
-        {"role": "system", "content": "You are an AI assistant that generates clear and descriptive titles."},
-        {"role": "user", "content": f"Generate a clear and descriptive title for the following content:\n\n{combined_content}"}
-    ]
-    title = llm_client.chat(messages)
-    return title if title else "Untitled Cluster"
-
-
-def generate_cluster_summary(note_ids: List[str]) -> str:
-    combined_content = generate_cluster_content(note_ids)
-    messages = [
-        {"role": "system", "content": "You are an AI assistant that summarizes content concisely."},
-        {"role": "user", "content": f"Summarize the following content in a few sentences:\n\n{combined_content}"}
-    ]
-    summary = llm_client.chat(messages)
-    return summary
-
+# -----------------------------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------------------------
 
 def generate_note_id() -> str:
     return os.urandom(8).hex()
@@ -279,14 +246,47 @@ def create_note_in_neo4j(note_id: str, content: str, processed_content: str,
         embedding=embedding,
         timestamp=timestamp.isoformat())
 
+def generate_cluster_label(cluster_id: int) -> str:
+    return f"Cluster_{cluster_id}"
+
+def generate_cluster_content(note_ids: List[str]) -> str:
+    with neo4j_conn.driver.session() as session:
+        contents = session.run("""
+        MATCH (n:Note)
+        WHERE n.id IN $ids
+        RETURN n.content AS content
+        """, ids=note_ids)
+        combined_content = "\n".join([record["content"] for record in contents])
+    return combined_content
+
+def generate_cluster_title(note_ids: List[str]) -> str:
+    combined_content = generate_cluster_content(note_ids)
+    messages = [
+        {"role": "system", "content": "You are an AI assistant that generates clear and descriptive titles."},
+        {"role": "user", "content": f"Generate a clear and descriptive title for the following content:\n\n{combined_content}"}
+    ]
+    llm_client = get_llm_client()
+    title = llm_client.chat(messages)
+    return title if title else "Untitled Cluster"
+
+def generate_cluster_summary(note_ids: List[str]) -> str:
+    combined_content = generate_cluster_content(note_ids)
+    messages = [
+        {"role": "system", "content": "You are an AI assistant that summarizes content concisely."},
+        {"role": "user", "content": f"Summarize the following content in a few sentences:\n\n{combined_content}"}
+    ]
+    llm_client = get_llm_client()
+    summary = llm_client.chat(messages)
+    return summary
+
 def refine_query(query: str) -> str:
     messages = [
         {"role": "system", "content": "You are an AI assistant that refines user queries to improve search results."},
         {"role": "user", "content": f"Please refine the following query for better search results:\n\n{query}"}
     ]
+    llm_client = get_llm_client()
     refined_query = llm_client.chat(messages)
     return refined_query if refined_query else query
-
 
 def get_dynamic_context(results) -> str:
     context = ""
@@ -309,6 +309,7 @@ def compute_pagerank():
     Retrieves the graph data from Neo4j, computes PageRank using NetworkX,
     and updates the PageRank scores back to Neo4j.
     """
+    import networkx as nx  # Lazy import
     logger.info("Starting PageRank computation using NetworkX...")
 
     with neo4j_conn.driver.session() as session:
@@ -390,6 +391,10 @@ def recalculate_all():
         RETURN n.id AS id, n.content AS content
         """)
 
+        # Lazy import SentenceTransformer here
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+
         for record in missing_embeddings:
             note_id = record["id"]
             content = record["content"]
@@ -436,6 +441,8 @@ def perform_clustering():
     Performs DBSCAN clustering on all note embeddings and updates Neo4j with Cluster nodes and relationships.
     """
     logger.info("Starting DBSCAN clustering...")
+    from sklearn.cluster import DBSCAN  # Lazy import
+    import numpy as np  # Lazy import
 
     with neo4j_conn.driver.session() as session:
         # Retrieve all embeddings
@@ -518,6 +525,9 @@ def perform_clustering():
 # Scheduler and Startup Events
 # -----------------------------------------------------------------------------
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
 scheduler = BackgroundScheduler()
 scheduler.start()
 
@@ -527,7 +537,8 @@ scheduler.add_job(
     trigger=IntervalTrigger(minutes=5),
     id='recalculate_all_job',
     name='Recalculate all similarities and PageRank every 5 minutes',
-    replace_existing=True)
+    replace_existing=True
+)
 
 # Schedule the clustering to run every 5 minutes as well
 scheduler.add_job(
@@ -535,7 +546,8 @@ scheduler.add_job(
     trigger=IntervalTrigger(minutes=5),
     id='dbscan_clustering_job',
     name='Perform DBSCAN clustering every 5 minutes',
-    replace_existing=True)
+    replace_existing=True
+)
 
 # Shut down the scheduler when exiting the app
 atexit.register(lambda: scheduler.shutdown())
@@ -547,10 +559,7 @@ async def startup_event():
     It triggers the recalculate_all function in the background.
     """
     logger.info("Starting initial recalculation...")
-    asyncio.create_task(async_recalculate_all())
-
-async def async_recalculate_all():
-    await asyncio.to_thread(recalculate_all)
+    asyncio.create_task(asyncio.to_thread(recalculate_all))
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -561,14 +570,15 @@ async def shutdown_event():
 # -----------------------------------------------------------------------------
 
 @app.post("/notes", response_model=NoteOutput)
-async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks):
+async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks, model=Depends(get_sentence_transformer)):
     if not neo4j_conn.verify_connectivity():
         raise HTTPException(status_code=500, detail="Database connection error")
 
     try:
         note_id = generate_note_id()
         processed_content = preprocess_for_embedding(note_input.content)
-        embedding = model.encode(processed_content).tolist()
+        embedding = await asyncio.to_thread(model.encode, processed_content)
+        embedding = embedding.tolist()
 
         create_note_in_neo4j(
             note_id,
@@ -603,13 +613,14 @@ async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/query", response_model=List[NoteOutput])
-async def query_notes(query_input: QueryInput):
+async def query_notes(query_input: QueryInput, model=Depends(get_sentence_transformer)):
     if not neo4j_conn.verify_connectivity():
         raise HTTPException(status_code=500, detail="Database connection error")
 
     try:
         processed_query = preprocess_for_embedding(query_input.query)
-        query_embedding = model.encode(processed_query).tolist()
+        query_embedding = await asyncio.to_thread(model.encode, processed_query)
+        query_embedding = query_embedding.tolist()
 
         with neo4j_conn.driver.session() as session:
             # Ensure all notes have embeddings
@@ -623,7 +634,8 @@ async def query_notes(query_input: QueryInput):
                 note_id = record["id"]
                 content = record["content"]
                 processed_content = preprocess_for_embedding(content)
-                embedding = model.encode(processed_content).tolist()
+                embedding = await asyncio.to_thread(model.encode, processed_content)
+                embedding = embedding.tolist()
 
                 session.run("""
                 MATCH (n:Note {id: $id})
@@ -710,15 +722,76 @@ async def trigger_full_recalculation(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail="Database connection error")
 
     background_tasks.add_task(recalculate_all)
-    background_tasks.add_task(perform_clustering)
     return {"message": "Full recalculation and clustering started in the background."}
+
+# -----------------------------------------------------------------------------
+# Tester Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/health")
+async def health_check():
+    """
+    General health check endpoint.
+    """
+    return {"status": "OK"}
+
+@app.get("/test/neo4j")
+async def test_neo4j():
+    """
+    Test Neo4j connection by performing a simple query.
+    """
+    if not neo4j_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Neo4j connection failed.")
+
+    try:
+        with neo4j_conn.driver.session() as session:
+            result = session.run("RETURN 1 AS result")
+            record = result.single()
+            if record and record["result"] == 1:
+                return {"neo4j": "Connection successful.", "result": record["result"]}
+            else:
+                return {"neo4j": "Unexpected result.", "result": record["result"] if record else None}
+    except Exception as e:
+        logger.error(f"Neo4j test failed: {e}")
+        raise HTTPException(status_code=500, detail="Neo4j test failed.")
+
+@app.get("/test/cohere")
+async def test_cohere():
+    """
+    Test Cohere client by sending a simple message.
+    """
+    try:
+        llm_client = get_llm_client()
+        test_message = [{"role": "user", "content": "Hello"}]
+        response = await asyncio.to_thread(llm_client.chat, test_message)
+        return {"cohere": "Connection successful.", "response": response}
+    except Exception as e:
+        logger.error(f"Cohere test failed: {e}")
+        raise HTTPException(status_code=500, detail="Cohere client test failed.")
+
+@app.get("/test/model")
+async def test_model(model=Depends(get_sentence_transformer)):
+    """
+    Test SentenceTransformer model by encoding a sample text.
+    """
+    try:
+        sample_text = "Test encoding"
+        embedding = await asyncio.to_thread(model.encode, sample_text)
+        return {
+            "model": "Loaded successfully.",
+            "embedding_length": len(embedding),
+            "sample_embedding": embedding[:5]  # Return first 5 elements as a sample
+        }
+    except Exception as e:
+        logger.error(f"Model test failed: {e}")
+        raise HTTPException(status_code=500, detail="SentenceTransformer model test failed.")
 
 # -----------------------------------------------------------------------------
 # RAG Endpoint
 # -----------------------------------------------------------------------------
 
 @app.post("/rag_query")
-async def rag_query(rag_query_input: RAGQueryInput):
+async def rag_query(rag_query_input: RAGQueryInput, model=Depends(get_sentence_transformer)):
     if not neo4j_conn.verify_connectivity():
         raise HTTPException(status_code=500, detail="Database connection error")
 
@@ -726,7 +799,8 @@ async def rag_query(rag_query_input: RAGQueryInput):
         # Refine the user's query
         refined_query = refine_query(rag_query_input.query)
         processed_query = preprocess_for_embedding(refined_query)
-        query_embedding = model.encode(processed_query).tolist()
+        query_embedding = await asyncio.to_thread(model.encode, processed_query)
+        query_embedding = query_embedding.tolist()
 
         with neo4j_conn.driver.session() as session:
             # Retrieve relevant notes from Neo4j with higher pagerank priority
@@ -765,6 +839,7 @@ async def rag_query(rag_query_input: RAGQueryInput):
         ]
 
         # Generate the response
+        llm_client = get_llm_client()
         answer = await asyncio.to_thread(llm_client.chat, messages)
         return {"answer": answer}
 
