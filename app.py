@@ -1,12 +1,16 @@
 # --- START OF FILE app.py ---
 
+import json
 import os
 import re
+import time
 import logging
 import asyncio
 import atexit
 from datetime import datetime
-from typing import Dict, Any, List
+import typing
+from typing import List, Dict, Any, Optional
+from typing_extensions import TypedDict
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
@@ -39,17 +43,28 @@ GENIUS_API_KEY_3 = os.getenv("GENIUS_API_KEY_3")  # Ensure this is set in .env
 GENIUS_MODEL = "gemini-1.5-flash-8b"
 
 # -------------------- Similarity Thresholds --------------------
+# Constants (Adjust these as per your requirements)
+SIMILARITY_THRESHOLD_NOTE = 0.1
+CLUSTER_FAVOR_WEIGHT = 1.2  # Slightly favor clusters
+AGENTIC_PROMPT_TIMEOUT = 10  # Total timeout in seconds for prompting and exploration
+
+
 SIMILARITY_THRESHOLD_RECALCULATE_ALL = float(os.getenv("SIMILARITY_THRESHOLD_RECALCULATE_ALL", 0.3875))
 SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS = float(os.getenv("SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS", 0.3875))
 SIMILARITY_THRESHOLD_RAG = float(os.getenv("SIMILARITY_THRESHOLD_RAG", 0.1))
+# *** New Threshold for Cluster Retrieval ***
+SIMILARITY_THRESHOLD_CLUSTER = float(os.getenv("SIMILARITY_THRESHOLD_CLUSTER", 0.2))
 
 # -------------------- DBSCAN Parameters --------------------
 DBSCAN_EPS = float(os.getenv("DBSCAN_EPS", 1.1725))
 DBSCAN_MIN_SAMPLES = int(os.getenv("DBSCAN_MIN_SAMPLES", 2))
 
 # -------------------- RAG Configuration --------------------
-RAG_MAX_CONTEXT_LENGTH = int(os.getenv("RAG_MAX_CONTEXT_LENGTH", 128000))  # Adjusted to be within typical token limits
-RAG_DEFAULT_MAX_TOKENS = int(os.getenv("RAG_DEFAULT_MAX_TOKENS", 4096))  # Adjusted for typical LLMs
+RAG_MAX_CONTEXT_LENGTH = int(os.getenv("RAG_MAX_CONTEXT_LENGTH", 1000000))  # Adjusted to be within typical token limits
+RAG_DEFAULT_MAX_TOKENS = int(os.getenv("RAG_DEFAULT_MAX_TOKENS", 32768))  # Adjusted for typical LLMs
+# *** New RAG Hyperparameters ***
+RAG_MAX_CLUSTERS = int(os.getenv("RAG_MAX_CLUSTERS", 5))
+RAG_MAX_NOTES_PER_CLUSTER = int(os.getenv("RAG_MAX_NOTES_PER_CLUSTER", 10))
 
 # -------------------- PageRank Configuration --------------------
 PAGERANK_ALPHA = float(os.getenv("PAGERANK_ALPHA", 0.85))  # Damping factor for PageRank
@@ -62,6 +77,33 @@ GENIUS_GENERATION_CONFIG = {
     "candidate_count": int(os.getenv("GENIUS_CANDIDATE_COUNT", 1)),
     # "stop_sequences": os.getenv("GENIUS_STOP_SEQUENCES").split(","),
     "temperature": float(os.getenv("GENIUS_TEMPERATURE", 1.0)),
+}
+
+# *** Prompt Templates ***
+REFINE_QUERY_PROMPT_TEMPLATE = os.getenv("REFINE_QUERY_PROMPT_TEMPLATE",
+    "Please refine the following query for better search results:\n{query}")
+
+CLUSTER_TITLE_PROMPT_TEMPLATE = os.getenv("CLUSTER_TITLE_PROMPT_TEMPLATE",
+    "Generate a concise and descriptive title for the following content:\n{content}")
+
+CLUSTER_SUMMARY_PROMPT_TEMPLATE = os.getenv("CLUSTER_SUMMARY_PROMPT_TEMPLATE",
+    "Summarize the following content in a few sentences:\n{content}")
+
+NOTE_SUMMARY_PROMPT_TEMPLATE = os.getenv("NOTE_SUMMARY_PROMPT_TEMPLATE",
+    "Summarize the following content:\n{content}")
+
+
+# Global configuration dictionary
+CONFIG = {
+    "SIMILARITY_THRESHOLD_RECALCULATE_ALL": 0.3875,
+    "SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS": 0.3875,
+    "SIMILARITY_THRESHOLD_RAG": 0.1,
+    "SIMILARITY_THRESHOLD_CLUSTER": 0.2,
+    "DBSCAN_EPS": 1.1725,
+    "DBSCAN_MIN_SAMPLES": 2,
+    "RAG_MAX_CLUSTERS": 5,
+    "RAG_MAX_NOTES_PER_CLUSTER": 10,
+    "PAGERANK_ALPHA": 0.85
 }
 
 # -----------------------------------------------------------------------------
@@ -136,6 +178,21 @@ class RAGQueryInput(BaseModel):
     query: str
     max_tokens: int = RAG_DEFAULT_MAX_TOKENS  # Default maximum number of tokens in the response
 
+class SubPromptResponse(TypedDict):
+    prompt: str
+    response: str
+
+class ParameterUpdate(BaseModel):
+    SIMILARITY_THRESHOLD_RECALCULATE_ALL: float
+    SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS: float
+    SIMILARITY_THRESHOLD_RAG: float
+    SIMILARITY_THRESHOLD_CLUSTER: float
+    DBSCAN_EPS: float
+    DBSCAN_MIN_SAMPLES: int
+    RAG_MAX_CLUSTERS: int
+    RAG_MAX_NOTES_PER_CLUSTER: int
+    PAGERANK_ALPHA: float
+
 # -----------------------------------------------------------------------------
 # Text Preprocessing
 # -----------------------------------------------------------------------------
@@ -180,13 +237,13 @@ class LLMClient:
     def __init__(self, model: str):
         self.model = genai.GenerativeModel(model)
 
-    def generate_content(self, prompt: str, stream: bool = False, generation_config: Dict[str, Any] = None):
+    def generate_content(self, prompt: str, stream: bool = False, generation_config = None):
         """
         Generates content using Gemini API.
         Supports both streaming and non-streaming responses.
         """
         if generation_config:
-            gen_config = genai.types.GenerationConfig(**generation_config)
+            gen_config = generation_config
         else:
             gen_config = None
 
@@ -261,20 +318,20 @@ def generate_cluster_content(note_ids: List[str]) -> str:
 
 def generate_cluster_title(note_ids: List[str]) -> str:
     combined_content = generate_cluster_content(note_ids)
-    prompt = f"Generate a concise and descriptive title for the following content:\n{combined_content}"
+    prompt = CLUSTER_TITLE_PROMPT_TEMPLATE.format(content=combined_content)
     llm_client = get_llm_client()
     title = llm_client.generate_content(prompt)
     return title if title else "Untitled Cluster"
 
 def generate_cluster_summary(note_ids: List[str]) -> str:
     combined_content = generate_cluster_content(note_ids)
-    prompt = f"Summarize the following content in a few sentences:\n{combined_content}"
+    prompt = CLUSTER_SUMMARY_PROMPT_TEMPLATE.format(content=combined_content)
     llm_client = get_llm_client()
     summary = llm_client.generate_content(prompt)
     return summary
 
 def refine_query(query: str) -> str:
-    prompt = f"Please refine the following query for better search results:\n{query}"
+    prompt = REFINE_QUERY_PROMPT_TEMPLATE.format(query=query)
     llm_client = get_llm_client()
     refined_query = llm_client.generate_content(prompt)
     return refined_query if refined_query else query
@@ -290,6 +347,159 @@ def get_dynamic_context(results) -> str:
             break
         context += formatted_content
     return context
+
+# *** Updated Helper Function for Prompt Refinement ***
+def refine_user_query_for_rag(context: str, query: str) -> str:
+    """
+    Refines the user query into a structured prompt with Context and Message sections.
+    """
+    refined_prompt = f"""### Task
+Assist in retrieving, organizing, and summarizing relevant knowledge from the Knowledger platform to effectively respond to user queries. Leverage the platform's graph-based note-taking system, dynamic clustering, and PageRank-weighted insights to provide comprehensive and contextually accurate answers.
+
+### Instructions
+1. **Understand the User Query:**
+   - Analyze the user's input to determine the primary intent and the specific information they seek.
+   - Identify any keywords or phrases that indicate the topic or area of interest.
+
+2. **Incorporate Relevant Context:**
+   - Utilize Knowledger's dynamic embeddings and clustering (NoteRank) to gather relevant notes and insights.
+   - Prioritize information based on PageRank scores to ensure high-quality and influential knowledge is surfaced.
+   - Aggregate context from multiple clusters if necessary to provide a comprehensive response.
+
+3. **Generate the Response:**
+   - Use the refined prompt and the aggregated context to generate a coherent and insightful answer.
+   - Ensure the response is clear, concise, and directly addresses the user's query.
+   - Maintain transparency by referencing relevant clusters and notes where applicable.
+
+4. **Structure the Output:**
+   - Present the response in a structured format, distinguishing between the "Context" used and the final "Message" generated.
+   - Ensure readability and coherence in the formatting to enhance user understanding.
+
+- ## Context:
+{context}
+
+-- ## Message
+{query}
+"""
+    return refined_prompt
+
+
+def clean_llm_output(output: str) -> str:
+    """
+    Cleans the LLM output by removing code block markers and unnecessary escape characters.
+    """
+    # Remove code block markers (```json and ```)
+    output = re.sub(r'```json\s*', '', output)
+    output = re.sub(r'```', '', output)
+    
+    # Remove leading/trailing whitespace
+    output = output.strip()
+    
+    # Replace escaped newlines with actual newlines
+    output = output.replace('\\n', '\n')
+    
+    return output
+
+def fix_common_json_errors(json_str: str) -> str:
+    """
+    Attempts to fix common JSON errors in the string.
+    """
+    # Add missing commas between objects
+    json_str = re.sub(r'}\s*{', '}, {', json_str)
+    
+    # Ensure all keys and string values use double quotes
+    json_str = json_str.replace("'", '"')
+    
+    # Remove trailing commas before closing braces/brackets
+    json_str = re.sub(r',\s*}', '}', json_str)
+    json_str = re.sub(r',\s*]', ']', json_str)
+    
+    return json_str
+
+def parse_tree_of_thoughts(output: str) -> Dict[str, Any]:
+    """
+    Parses the cleaned JSON string into a Python dictionary.
+    """
+    try:
+        cleaned_output = clean_llm_output(output)
+        corrected_output = fix_common_json_errors(cleaned_output)
+        tree_of_thoughts = json.loads(corrected_output)
+        return tree_of_thoughts
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parsing error: {e}")
+        logger.debug(f"Failed JSON string: {corrected_output}")
+        raise ValueError(f"Unable to parse JSON: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error during JSON parsing: {e}")
+        raise ValueError(f"Unexpected error: {e}")
+
+def extract_all_sub_prompts(thoughts: List[Dict[str, Any]]) -> List[str]:
+    """
+    Recursively extracts all sub-prompts from the tree of thoughts.
+    """
+    sub_prompts = []
+    for thought in thoughts:
+        prompt = thought.get("prompt")
+        if prompt:
+            sub_prompts.append(prompt)
+        nested = thought.get("sub_prompts", [])
+        if nested:
+            sub_prompts.extend(extract_all_sub_prompts(nested))
+    return sub_prompts
+
+def validate_response(response: Dict[str, Any], schema: typing.Type[TypedDict]) -> bool:
+    """
+    Validates that the response adheres to the provided schema.
+    """
+    for key, value_type in schema.__annotations__.items():
+        if key not in response:
+            logger.error(f"Missing key in response: {key}")
+            return False
+        if not isinstance(response[key], value_type):
+            logger.error(f"Incorrect type for key '{key}': Expected {value_type}, got {type(response[key])}")
+            return False
+    return True
+
+def generate_sub_prompt_response(idx: int, sub_prompt: str, llm_client, max_retries: int = 3) -> Dict[str, Any]:
+    """
+    Generates a response for a given sub-prompt using the LLM client with retry logic.
+    
+    Args:
+        idx (int): The index of the sub-prompt.
+        sub_prompt (str): The sub-prompt string.
+        llm_client: The LLM client instance.
+        max_retries (int): Maximum number of retry attempts.
+    
+    Returns:
+        Dict[str, Any]: A dictionary containing the prompt and its response.
+    """
+    detailed_prompt = (
+        f"{sub_prompt}\n\n"
+        "Guidelines:\n"
+        "1. Be concise and clear.\n"
+        "2. Reference relevant notes where applicable.\n"
+        "3. Ensure the information is accurate and well-organized.\n"
+        "4. Maintain a neutral and informative tone."
+    )
+    logger.info(f"Processing Sub-Prompt {idx}: {sub_prompt[:50]}...")
+
+    attempt = 0
+    while attempt < max_retries:
+        try:
+            response = llm_client.generate_content(
+                prompt=detailed_prompt
+            )
+            logger.info(f"Completed Sub-Prompt {idx}: {sub_prompt[:50]}...")
+            return {"prompt": sub_prompt, "response": response}
+        except Exception as e:
+            attempt += 1
+            wait_time = 2 ** attempt  # Exponential backoff
+            logger.error(f"Error generating response for Sub-Prompt {idx}: {e}. Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+    
+    logger.error(f"Failed to generate response for Sub-Prompt {idx} after {max_retries} attempts.")
+    return {"prompt": sub_prompt, "response": f"Error generating response after {max_retries} attempts."}
+
 
 # -----------------------------------------------------------------------------
 # Graph and Clustering Functions
@@ -348,6 +558,23 @@ def compute_pagerank():
         """, pagerank_data=pagerank_data)
 
     logger.info("PageRank computation and update completed.")
+
+def compute_cluster_pagerank():
+    """
+    Computes PageRank for clusters based on the PageRank of their constituent notes.
+    """
+    with neo4j_conn.driver.session() as session:
+        logger.info("Computing PageRank weights for clusters...")
+        # Sum the PageRank scores of all notes within each cluster
+        result = session.run("""
+        MATCH (n:Note)-[:BELONGS_TO]->(c:Cluster)
+        WITH c, sum(n.pagerank) AS cluster_pagerank
+        SET c.pagerank_weight = cluster_pagerank
+        RETURN c.label AS label, c.pagerank_weight AS pagerank_weight
+        """)
+
+        for record in result:
+            logger.info(f"Cluster {record['label']} has pagerank weight {record['pagerank_weight']}")
 
 def update_note_relationships(note_id: str):
     with neo4j_conn.driver.session() as session:
@@ -424,11 +651,16 @@ def recalculate_all():
 
     # Step 5: Recluster
     perform_clustering()
+
+    # Step 6: Compute Cluster PageRank Weights
+    compute_cluster_pagerank()
+
     logger.info("Full recalculation completed.")
 
 def perform_clustering():
     """
     Performs DBSCAN clustering on all note embeddings and updates Neo4j with Cluster nodes and relationships.
+    Additionally, computes and stores the weighted average embedding for each cluster.
     """
     logger.info("Starting DBSCAN clustering...")
     from sklearn.cluster import DBSCAN  # Lazy import
@@ -440,68 +672,89 @@ def perform_clustering():
         result = session.run("""
         MATCH (n:Note)
         WHERE n.embedding IS NOT NULL AND size(n.embedding) > 0
-        RETURN n.id AS id, n.embedding AS embedding
+        RETURN n.id AS id, n.embedding AS embedding, n.pagerank AS pagerank
         """)
-
+    
         note_ids = []
         embeddings = []
+        pageranks = []
         for record in result:
             note_id = record["id"]
             embedding = record["embedding"]
-            if note_id and embedding:
+            pagerank = record["pagerank"]
+            if note_id and embedding and pagerank is not None:
                 note_ids.append(note_id)
                 embeddings.append(embedding)
-
+                pageranks.append(pagerank)
+    
         if not embeddings:
             logger.warning("No embeddings found for clustering.")
             return
-
+    
         embeddings_array = np.array(embeddings)
-
+        pageranks_array = np.array(pageranks)
+    
         # Perform DBSCAN clustering with configurable parameters
         dbscan = DBSCAN(eps=DBSCAN_EPS, min_samples=DBSCAN_MIN_SAMPLES)
         cluster_labels = dbscan.fit_predict(embeddings_array)
-
+    
         unique_labels = set(cluster_labels)
         logger.info(f"Number of clusters found: {len(unique_labels) - (1 if -1 in unique_labels else 0)}")
-
+    
         # Remove existing Cluster nodes and relationships to prevent duplicates
         logger.info("Removing existing Cluster nodes and relationships...")
         session.run("""
         MATCH (c:Cluster)
         DETACH DELETE c
         """)
-
+    
         # Create new Cluster nodes and assign notes
         clusters = {}
-        for note_id, label in zip(note_ids, cluster_labels):
+        for note_id, label, pagerank in zip(note_ids, cluster_labels, pageranks_array):
             if label == -1:
                 continue  # Skip noise points
-            clusters.setdefault(label, []).append(note_id)
-
+            clusters.setdefault(label, []).append((note_id, pagerank))
+    
         # Prepare data for batch operations
         cluster_data = []
         for label, members in clusters.items():
             cluster_label = generate_cluster_label(label)
-            title = generate_cluster_title(members)       # Generate cluster title using Gemini
-            summary = generate_cluster_summary(members)   # Generate cluster summary using Gemini
+            member_ids = [member[0] for member in members]
+            member_pageranks = [member[1] for member in members]
+    
+            # Compute Weighted Average Embedding
+            member_embeddings = embeddings_array[[note_ids.index(mid) for mid in member_ids]]
+            member_pageranks_np = np.array(member_pageranks)
+            weighted_sum = np.sum(member_embeddings.T * member_pageranks_np, axis=1)
+            total_pagerank = np.sum(member_pageranks_np)
+            if total_pagerank > 0:
+                cluster_embedding = (weighted_sum / total_pagerank).tolist()
+            else:
+                cluster_embedding = member_embeddings.mean(axis=0).tolist()  # Fallback to simple average
+    
+            # Generate cluster title and summary using Gemini
+            title = generate_cluster_title(member_ids)       # Generate cluster title using Gemini
+            summary = generate_cluster_summary(member_ids)   # Generate cluster summary using Gemini
+    
             cluster_data.append({
                 'label': cluster_label,
                 'title': title,
                 'summary': summary,
                 'size': len(members),
-                'note_ids': members
+                'note_ids': member_ids,
+                'embedding': cluster_embedding
             })
-
+    
         # Create Cluster nodes and BELONGS_TO relationships in batch
         for cluster in cluster_data:
             session.run("""
             MERGE (c:Cluster {label: $label})
             SET c.title = $title,
                 c.summary = $summary,
-                c.size = $size
-            """, label=cluster['label'], title=cluster['title'], summary=cluster['summary'], size=cluster['size'])
-
+                c.size = $size,
+                c.embedding = $embedding
+            """, label=cluster['label'], title=cluster['title'], summary=cluster['summary'], size=cluster['size'], embedding=cluster['embedding'])
+    
             # Create BELONGS_TO relationships
             session.run("""
             UNWIND $note_ids AS note_id
@@ -524,7 +777,7 @@ scheduler.start()
 # Schedule the recalculate_all function to run every 5 minutes
 scheduler.add_job(
     func=recalculate_all,
-    trigger=IntervalTrigger(minutes=5),
+    trigger=IntervalTrigger(minutes=30),
     id='recalculate_all_job',
     name='Recalculate all similarities and PageRank every 5 minutes',
     replace_existing=True
@@ -533,7 +786,7 @@ scheduler.add_job(
 # Schedule the clustering to run every 5 minutes as well
 scheduler.add_job(
     func=perform_clustering,
-    trigger=IntervalTrigger(minutes=5),
+    trigger=IntervalTrigger(minutes=30),
     id='dbscan_clustering_job',
     name='Perform DBSCAN clustering every 5 minutes',
     replace_existing=True
@@ -572,7 +825,7 @@ async def create_note(note_input: NoteInput, background_tasks: BackgroundTasks, 
 
         # Generate summary using Gemini API
         llm_client = get_llm_client()
-        summary_prompt = f"Summarize the following content:\n{processed_content}"
+        summary_prompt = NOTE_SUMMARY_PROMPT_TEMPLATE.format(content=processed_content)
         summary = llm_client.generate_content(prompt=summary_prompt)
 
         create_note_in_neo4j(
@@ -648,9 +901,9 @@ async def query_notes(query_input: QueryInput, model=Depends(get_sentence_transf
                        a + (n.embedding[x] * $query_embedding[x])) AS dotProduct,
                  sqrt(reduce(a = 0.0, x IN $query_embedding | a + x * x)) AS magQuery,
                  sqrt(reduce(a = 0.0, x IN n.embedding | a + x * x)) AS magNote
-            WITH n, dotProduct / (magQuery * magNote) AS similarity
+            WITH n, dotProduct / (magQuery * magNote) AS similarity, n.pagerank AS pagerank
             WHERE similarity > $similarity_threshold
-            ORDER BY similarity DESC
+            ORDER BY similarity DESC, pagerank DESC
             LIMIT $limit
             RETURN n.id as id, n.content as content, n.processed_content as processed_content,
                    n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank, n.summary as summary
@@ -726,6 +979,32 @@ async def trigger_full_recalculation(background_tasks: BackgroundTasks):
 # -----------------------------------------------------------------------------
 # Tester Endpoints
 # -----------------------------------------------------------------------------
+async def apply_parameter_updates(params: ParameterUpdate):
+    """
+    Applies the parameter updates.
+    This function should include any necessary logic to re-cluster,
+    recompute embeddings, or other operations based on the new parameters.
+    """
+    # Update the global CONFIG
+    CONFIG.update(params.dict())
+    logging.info(f"Configuration updated: {CONFIG}")
+    
+    # Perform a recalculaton
+    asyncio.create_task(recalculate_all())
+
+@app.post("/update_parameters")
+async def update_parameters(params: ParameterUpdate, background_tasks: BackgroundTasks):
+    """
+    Endpoint to update algorithm parameters.
+    The update is handled in the background to prevent blocking.
+    """
+    try:
+        background_tasks.add_task(apply_parameter_updates, params)
+        logging.info(f"Received parameter update request: {params.dict()}")
+        return {"message": "Parameter update initiated successfully."}
+    except Exception as e:
+        logging.error(f"Failed to initiate parameter update: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update parameters.")
 
 @app.get("/health")
 async def health_check():
@@ -790,62 +1069,250 @@ async def test_model():
 # -----------------------------------------------------------------------------
 
 @app.post("/rag_query")
-async def rag_query(rag_query_input: RAGQueryInput, model=Depends(get_sentence_transformer)):
+async def rag_query(
+    rag_query_input: RAGQueryInput,
+    background_tasks: BackgroundTasks,
+    model=Depends(get_sentence_transformer)
+):
     if not neo4j_conn.verify_connectivity():
+        logger.error("Database connection error")
         raise HTTPException(status_code=500, detail="Database connection error")
 
+    start_time = time.time()  # Track total processing time
+
     try:
-        # Refine the user's query
-        refined_query = refine_query(rag_query_input.query)
-        processed_query = preprocess_for_embedding(refined_query)
+        user_query = rag_query_input.query
+        logger.info(f"Received Query: {user_query}")
+
+        # *** Step 1: Prompt Refining, Engineering, and Optimization ***
+        refined_user_query = refine_query(user_query)
+        logger.info(f"Refined Query: {refined_user_query}")
+        processed_query = preprocess_for_embedding(refined_user_query)
+        logger.info(f"Processed Query: {processed_query}")
         query_embedding = await asyncio.to_thread(model.encode, processed_query)
         query_embedding = query_embedding.tolist()
+        logger.debug(f"Query Embedding (first 5 elements): {query_embedding[:5]}...")
 
+        # *** Step 2: Query Notes First ***
         with neo4j_conn.driver.session() as session:
-            # Retrieve relevant notes from Neo4j with higher pagerank priority
-            results = session.run("""
+            note_results = session.run("""
             MATCH (n:Note)
             WHERE n.embedding IS NOT NULL AND size(n.embedding) > 0
             WITH n,
                  reduce(a = 0.0, x IN range(0, size(n.embedding)-1) |
                        a + (n.embedding[x] * $query_embedding[x])) AS dotProduct,
                  sqrt(reduce(a = 0.0, x IN $query_embedding | a + x * x)) AS magQuery,
-                 sqrt(reduce(a = 0.0, x IN n.embedding | a + x * x)) AS magNote,
-                 n.pagerank AS pagerank
-            WITH n, dotProduct / (magQuery * magNote) AS similarity, pagerank
+                 sqrt(reduce(a = 0.0, x IN n.embedding | a + x * x)) AS magNote
+            WITH n, (dotProduct / (magQuery * magNote)) AS similarity
             WHERE similarity > $similarity_threshold
-            RETURN n.id AS id, n.content AS content, similarity, pagerank
+            RETURN n.id AS id, n.content AS content, n.pagerank AS pagerank, similarity
             ORDER BY similarity DESC, pagerank DESC
-            LIMIT 5
-            """, query_embedding=query_embedding, similarity_threshold=SIMILARITY_THRESHOLD_RAG)
+            LIMIT $max_notes
+            """, query_embedding=query_embedding, similarity_threshold=SIMILARITY_THRESHOLD_NOTE, max_notes=RAG_MAX_NOTES_PER_CLUSTER)
 
-            results = list(results)
+            notes = [record for record in note_results]
+            logger.info(f"Retrieved {len(notes)} notes.")
 
-        if not results:
-            return {"answer": "No relevant information found to answer your query.", "referenced_note_ids": []}
+        # *** Step 3: Aggregate Notes and Track Clusters ***
+        aggregated_context = ""
+        referenced_note_ids = []
+        cluster_note_count = {}  # To track number of notes per cluster
 
-        # Prepare the context from the retrieved notes
-        context = get_dynamic_context(results)
-        referenced_note_ids = [record["id"] for record in results]
+        with neo4j_conn.driver.session() as session:
+            for note in notes:
+                note_id = note["id"]
+                content = note["content"]
+                pagerank = note["pagerank"]
+                similarity = note["similarity"]
 
-        # Ensure context length is within limits
-        if len(context) > RAG_MAX_CONTEXT_LENGTH:
-            context = context[:RAG_MAX_CONTEXT_LENGTH]
+                # Fetch the cluster label for this note
+                cluster_label_result = session.run("""
+                MATCH (n:Note)-[:BELONGS_TO]->(c:Cluster)
+                WHERE n.id = $note_id
+                RETURN c.label AS label
+                """, note_id=note_id)
 
-        # Generate the response using Gemini API
-        prompt = f"Context:\n{context}\nQuestion:\n{rag_query_input.query}"
+                cluster_label_record = cluster_label_result.single()
+                if cluster_label_record:
+                    cluster_label = cluster_label_record["label"]
+                    cluster_note_count[cluster_label] = cluster_note_count.get(cluster_label, 0) + 1
+                else:
+                    cluster_label = "Unknown"
+
+                formatted_content = f"Note ID: {note_id}\nContent: {content}\n\n"
+                if len(aggregated_context) + len(formatted_content) > RAG_MAX_CONTEXT_LENGTH:
+                    logger.info("Reached maximum context length while adding notes. Stopping aggregation.")
+                    break
+                aggregated_context += formatted_content
+                referenced_note_ids.append(note_id)
+                logger.info(f"Added Note ID: {note_id} from Cluster: {cluster_label}")
+
+        # *** Step 4: Query Clusters Separately ***
+        with neo4j_conn.driver.session() as session:
+            cluster_results = session.run("""
+            MATCH (c:Cluster)
+            WHERE c.embedding IS NOT NULL AND size(c.embedding) > 0
+            WITH c,
+                 reduce(a = 0.0, x IN range(0, size(c.embedding)-1) |
+                       a + (c.embedding[x] * $query_embedding[x])) AS dotProduct,
+                 sqrt(reduce(a = 0.0, x IN $query_embedding | a + x * x)) AS magQuery,
+                 sqrt(reduce(a = 0.0, x IN c.embedding | a + x * x)) AS magCluster
+            WITH c, (dotProduct / (magQuery * magCluster)) AS similarity
+            WHERE similarity > $similarity_threshold
+            RETURN c.label AS label, c.title AS title, c.summary AS summary, c.pagerank_weight AS pagerank_weight, similarity
+            ORDER BY similarity DESC, pagerank_weight DESC
+            LIMIT $max_clusters
+            """, query_embedding=query_embedding, similarity_threshold=SIMILARITY_THRESHOLD_CLUSTER, max_clusters=RAG_MAX_CLUSTERS)
+
+            clusters = [record for record in cluster_results]
+            logger.info(f"Retrieved {len(clusters)} clusters.")
+
+        # *** Step 5: Adjust Cluster Similarity Based on Number of Notes Selected ***
+        clusters = [dict(record) for record in clusters]  # Convert records to dictionaries
+
+        for cluster in clusters:
+            cluster_label = cluster["label"]
+            num_notes = cluster_note_count.get(cluster_label, 0)
+            original_similarity = cluster["similarity"]
+            # Adjust similarity based on number of notes: more notes -> higher similarity
+            similarity_factor = 1 + (num_notes / RAG_MAX_NOTES_PER_CLUSTER)  # Example adjustment
+            adjusted_similarity = original_similarity * similarity_factor
+
+            # Apply cluster favor weight
+            adjusted_similarity *= CLUSTER_FAVOR_WEIGHT
+
+            # Update the similarity score in the cluster dictionary
+            cluster["adjusted_similarity"] = adjusted_similarity
+            logger.debug(f"Cluster: {cluster_label}, Original Similarity: {original_similarity}, "
+                        f"Number of Notes: {num_notes}, Adjusted Similarity: {adjusted_similarity}")
+
+        # *** Step 6: Sort Clusters Based on Adjusted Similarity ***
+        clusters_sorted = sorted(clusters, key=lambda x: (x["adjusted_similarity"], x["pagerank_weight"]), reverse=True)
+        logger.info("Clusters sorted based on adjusted similarity.")
+
+        # *** Step 7: Aggregate Clusters into Context ***
+        referenced_cluster_labels = []
+        for cluster in clusters_sorted:
+            cluster_label = cluster["label"]
+            cluster_summary = cluster["summary"]
+            formatted_cluster = f"Cluster: {cluster_label}\nSummary: {cluster_summary}\n\n"
+            if len(aggregated_context) + len(formatted_cluster) > RAG_MAX_CONTEXT_LENGTH:
+                logger.info("Reached maximum context length while adding cluster summaries. Stopping aggregation.")
+                break
+            aggregated_context += formatted_cluster
+            referenced_cluster_labels.append(cluster_label)
+            logger.info(f"Added Cluster Summary: {cluster_label}")
+
+        logger.info(f"Total Aggregated Context Length: {len(aggregated_context)} characters.")
+
+        # *** Step 8: Generate the Answer Using LLM ***
+        refined_prompt = refine_user_query_for_rag(context=aggregated_context, query=user_query)
+        logger.debug(f"Refined Prompt Length: {len(refined_prompt)}")
         llm_client = get_llm_client()
-        answer = llm_client.generate_content(
-            prompt=prompt,
-            stream=False,
-            generation_config=GENIUS_GENERATION_CONFIG
+
+        # **New Steps: Tree of Thoughts and Multi-Step Reasoning**
+
+        # **Sub-Step 1: Generate Tree of Thoughts **
+        try:
+            # Instruct the LLM to generate a tree of thoughts in JSON format
+            tree_of_thoughts_prompt = (
+                f"{refined_prompt}\n\n"
+                "Please analyze the above context and generate a JSON object representing a tree of thoughts. "
+                "The JSON should have a key 'thoughts' which is a list of sub-prompts or questions to explore. "
+                "Ensure that the JSON is properly formatted with double quotes."
+            )
+            logger.info("Generating Tree of Thoughts.")
+            tree_response = await asyncio.to_thread(
+                lambda: llm_client.generate_content(
+                    prompt=tree_of_thoughts_prompt,
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json", response_schema=list[SubPromptResponse]
+                    )
+                )
+            )
+            logger.info(f"Tree response: {tree_response}")
+            logger.debug(f"Tree of Thoughts JSON: {tree_response[:500]}...")  # Log first 500 chars
+
+            parsed_tree_response = json.loads(tree_response)
+            logger.info("Tree of thoughts: ", parsed_tree_response)
+            sub_prompts = [x['prompt'] for x in parsed_tree_response]
+            logger.info("Sub prompts: ", sub_prompts)
+        except ValueError as e:
+            logger.error(f"Failed to parse Tree of Thoughts JSON: {e}")
+            raise HTTPException(status_code=500, detail="Error parsing Tree of Thoughts JSON from LLM")
+        except Exception as e:
+            logger.error(f"Unexpected error during Tree of Thoughts generation: {e}")
+            raise HTTPException(status_code=500, detail="Unexpected error during Tree of Thoughts generation")
+
+        # **Sub-Step 2: Generate Responses for Each Sub-Prompt **
+        responses = []
+
+        for idx, prompt in enumerate(sub_prompts, start=0):
+            try:
+                subresponse = generate_sub_prompt_response(
+                    sub_prompt=prompt,
+                    idx=idx,
+                    llm_client=llm_client
+                )
+                responses.append(subresponse)
+            except Exception as e:
+                logger.error(f"Error processing Sub-Prompt {idx}: {e}")
+                responses.append({"prompt": prompt, "response": f"Error generating response: {e}"})
+
+            # Check if total processing time is approaching the timeout
+            # elapsed_time = time.time() - start_time
+            # if elapsed_time >= AGENTIC_PROMPT_TIMEOUT:
+            #     logger.error("Agentic prompting and exploration timed out.")
+            #     break
+
+        logger.info(f"Generated responses for {len(responses)} sub-prompts.")
+
+        # **Sub-Step 3: Aggregate and Reformat Answers Through Another RAG Run**
+        aggregated_sub_responses = "\n".join([
+            f"Sub-Prompt {i}: {resp['response']}" for i, resp in enumerate(responses, 1)
+            if resp['response'] and not resp['response'].startswith("Error")
+        ])
+        logger.debug(f"Aggregated Sub-Responses Length: {len(aggregated_sub_responses)}")
+
+        # **Final Prompt for LLM**
+        final_prompt = (
+            f"{aggregated_context}\n\n"
+            f"{aggregated_sub_responses}\n\n"
+            "Please synthesize the above information into a clear and concise answer, "
+            "linking relevant notes where appropriate to enhance the response."
         )
+        logger.info("Generating final synthesized answer.")
+        logger.debug(f"Final Prompt Length: {len(final_prompt)}")
+        logger.debug(f"Final Prompt: {final_prompt[:500]}...")  # Log first 500 chars
 
-        return {"answer": answer, "referenced_note_ids": referenced_note_ids}
-
+        try:
+            final_response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: llm_client.generate_content(
+                        prompt=final_prompt
+                    )
+                ),
+                timeout=3000000
+            )
+            final_answer = final_response
+            logger.info("Final answer generated successfully.")
+            logger.debug(f"Final LLM Answer: {final_response[:500]}...")  # Log first 500 chars
+        except asyncio.TimeoutError:
+            logger.error("Final answer generation timed out.")
+            final_answer = "Error: Final answer generation timed out."
     except Exception as e:
-        logger.error(f"Error in RAG query: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error generating final answer from LLM: {e}")
+        final_answer = "Error: Unable to generate final answer from LLM."
+
+    total_time = time.time() - start_time
+    logger.info(f"Total processing time: {total_time:.2f} seconds.")
+
+    return {
+        "answer": final_answer,
+        "referenced_cluster_labels": referenced_cluster_labels,
+        "referenced_note_ids": referenced_note_ids,
+        "error": "" if not final_answer.startswith("Error") else final_answer
+    }
 
 # -----------------------------------------------------------------------------
 # Main Execution
