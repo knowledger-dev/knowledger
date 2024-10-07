@@ -14,7 +14,7 @@ export default function ButtonHalo({ children, onChangeMode }) {
     <div className="flex justify-center items-center">
       <button
         onClick={handleClick}
-        className={`relative bg-purple-900 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full transform transition-transform hover:-translate-y-0.5`}
+        className={`relative bg-purple-900 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full transform transition-transform hover:-translate-y-0.5 max-md:text-sm`}
       >
         {children}
         {isHaloVisible && (

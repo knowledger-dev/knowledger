@@ -9,11 +9,18 @@ import NavBar from "./molecules/NavBar";
 
 function App() {
   return (
-    <main className="flex justify-center gap-0">
+    <main className="flex justify-center gap-0 bg-white dark:bg-black">
       <NavBar />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Search />} />
+          <Route
+            path="/"
+            element={
+              <section className="w-full h-screen flex justify-center items-center">
+                <Search />
+              </section>
+            }
+          />
           <Route
             path="/search-og"
             element={
