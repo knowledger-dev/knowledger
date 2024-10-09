@@ -10,7 +10,7 @@ const applyGraphForces = (graphRef, linkDistance, nodeRadius) => {
 
   graphRef.current.d3Force(
     "collide",
-    forceCollide(nodeRadius).strength(0.2).iterations(1)
+    forceCollide(nodeRadius).strength(1).iterations(1)
   );
   graphRef.current.d3ReheatSimulation();
 };
@@ -22,7 +22,6 @@ export default function Graph({
   setFocusedNode,
 }) {
   const graphRef = useRef(null);
-  const nodeRadius = 20;
   const [dimensions, setDimensions] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -46,13 +45,13 @@ export default function Graph({
 
   useEffect(() => {
     if (graphRef.current && data) {
-      const nodeCount = data.nodes.length;
-      const linkDistance = Math.max(1, 10 - nodeCount * 0.1); // link distance should actually increase as more nodes are created, otherwise they will all be pulled to center like crazy
+      const linkDistance = 25; // make it constant for now as radius is that of the highest
       console.log("Change link distance!", linkDistance);
-      applyGraphForces(graphRef, linkDistance, nodeRadius);
+      const largestNodeRadius = Math.max(...data.nodes.map((node) => node.val));
+      applyGraphForces(graphRef, linkDistance, largestNodeRadius);
       graphRef.current.width = dimensions.width;
     }
-  }, [data, nodeRadius, dimensions]);
+  }, [data, dimensions]);
 
   useEffect(() => {
     if (focusedNode) {
@@ -90,36 +89,47 @@ export default function Graph({
           graphData={data}
           width={dimensions.width}
           height={dimensions.height}
-          backgroundColor="transparent"
+          // nodeCanvasObject={(node, ctx, globalScale) => {
+          //   const label = node.name;
+          //   const fontSize = 12 / globalScale;
+          //   ctx.font = `${fontSize}px Sans-Serif`;
+          //   ctx.fillStyle = isDarkMode ? "white" : "black";
+          //   ctx.textAlign = "center";
+          //   ctx.textBaseline = "middle";
+          //   ctx.fillText(label, node.x, node.y);
+          // }}
+          backgroundColor={
+            isDarkMode ? "rgba(0, 0, 0, 1)" : "rgba(255, 255, 255, 1)"
+          }
+          linkWidth={3}
           linkColor={(link) => {
             if (link.source.val > 4 && link.target.val > 9) {
-              return "rgba(255, 87, 51, 0.2)"; // More muted color
+              return isDarkMode
+                ? "rgba(255, 87, 51, 0.8)"
+                : "rgba(255, 87, 51, 0.8)";
             } else if (link.source.val > 6 && link.target.val > 4) {
-              return "rgba(51, 255, 189, 0.2)"; // More muted color
+              return isDarkMode
+                ? "rgba(51, 255, 189, 0.8)"
+                : "rgba(51, 255, 189, 0.8)";
             } else {
-              return "rgba(51, 85, 255, 0.2)"; // More muted color
+              return isDarkMode
+                ? "rgba(51, 85, 255, 0.8)"
+                : "rgba(51, 85, 255, 0.8)";
             }
           }}
-          linkDirectionalArrowLength={3.5}
+          nodeColor={
+            isDarkMode
+              ? (node) =>
+                  node.name === focusedNode
+                    ? "rgba(80, 10, 10, 1)"
+                    : "rgba(80, 10, 10, 1)"
+              : (node) =>
+                  node.name === focusedNode
+                    ? "rgba(80, 10, 10, 1)"
+                    : "rgba(80, 10, 10, 1)"
+          }
+          linkDirectionalArrowLength={3}
           linkDirectionalArrowRelPos={1}
-          nodeCanvasObject={(node, ctx, globalScale) => {
-            const label = node.name || node.id;
-            const fontSize = Math.max(6 / globalScale, 5);
-            node.color =
-              node.val > 6
-                ? "rgba(255, 87, 51, 0.5)"
-                : "rgba(51, 85, 255, 0.5)"; // More muted color
-            ctx.color = node.color;
-            ctx.textAlign = "center";
-
-            ctx.fillStyle = isDarkMode
-              ? "rgba(0, 0, 0, 0.8)"
-              : "rgba(255, 255, 255, 0.5)"; // More muted color
-
-            ctx.font = `${fontSize}px monospace`;
-            ctx.textBaseline = "middle";
-            ctx.fillText(label, node.x, node.y);
-          }}
         />
       )}
     </section>

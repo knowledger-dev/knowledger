@@ -10,6 +10,10 @@ import IconButton from "../atoms/IconButton";
 import { useState } from "react";
 import { GiBrain } from "react-icons/gi";
 
+import { marked } from "marked";
+
+import HOST from "../VARS";
+
 // Main functional component
 import PropTypes from "prop-types";
 import FocusableInput from "../atoms/FocusableInput";
@@ -17,17 +21,13 @@ import FocusableInput from "../atoms/FocusableInput";
 export default function Bar({
   isDarkMode,
   handleChangeData,
-  setFocusedNode,
+  // setFocusedNode,
   isInputFocused,
   setIsInputFocused,
   isCaptureMode,
   setIsCaptureMode,
 }) {
   const [search, setSearch] = useState("");
-  const [num, setNum] = useState(2);
-  // State to keep track of dark mode, initialized from localStorage
-
-  // State to keep track of Capture Mode, initialized from localStorage
 
   // Function to toggle Capture Mode and save it to localStorage
   const onChangeMode = useCallback(() => {
@@ -44,12 +44,18 @@ export default function Bar({
     }
   };
 
+  // Function to calculate node value based on label size
+  const calculateNodeValue = (label) => {
+    const baseSize = 10; // You can adjust this base size as needed
+    return label.length / baseSize > 10 ? 10 : label.length / baseSize;
+  };
+
   // useEffect to bind and unbind keyboard shortcuts
   useEffect(() => {
-    Mousetrap.bindGlobal("ctrl+m", onChangeMode);
+    Mousetrap.bindGlobal(["ctrl+shift+m", "command+shift+m"], onChangeMode);
 
     return () => {
-      Mousetrap.unbind("ctrl+m");
+      ~Mousetrap.unbind(["ctrl+shift+m", "command+shift+m"]);
     };
   }, [isCaptureMode, onChangeMode]);
 
@@ -58,21 +64,124 @@ export default function Bar({
       event.preventDefault();
       console.log(search);
 
-      // TODO: Add search and populate with results
-      const randomValue = Math.floor(Math.random() * 12) + 2;
-      handleChangeData({
-        nodes: [{ id: num, name: search, val: randomValue }],
-        links: [
-          { source: num, target: num - 1 },
-          { source: num, target: 1 },
-        ],
-      });
-      setNum(num + 1);
-      setSearch("");
+      if (search === "") {
+        return;
+      }
+
+      if (search == "admin bypass populate") {
+        fetch("./notes.txt")
+          .then((response) => response.text())
+          .then((text) => {
+            const lines = text.split("\n");
+            lines.forEach((line) => {
+              fetch(`${HOST}/notes`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  content: line,
+                  timestamp: new Date().toISOString(),
+                }),
+              })
+                .then((response) => response.json())
+                .then((data) => {
+                  console.log("Note saved:", data);
+                })
+                .catch((error) => {
+                  console.error("Error:", error);
+                });
+            });
+          })
+          .catch((error) => {
+            console.error("Error reading file:", error);
+          });
+        return;
+      }
+
+      fetch(`${HOST}/notes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: search,
+          timestamp: new Date().toISOString(),
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log("Note saved:", data);
+          setSearch("");
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+        });
     } else {
-      setFocusedNode(search);
       setIsInputFocused(false);
       setSearch("");
+      fetch(`${HOST}/rag_query`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: search,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log(data);
+
+          const { answer, referenced_note_ids } = data;
+
+          const fetchNotes = async (ids) => {
+            const notes = await Promise.all(
+              ids.map(async (id) => {
+                const response = await fetch(`${HOST}/notes/${id}`, {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                });
+                const note = await response.json();
+                return { id: note.id, name: note.content };
+              })
+            );
+            return notes;
+          };
+
+          fetchNotes(referenced_note_ids).then((notes) => {
+            const centralNodeName = `<div style="font-size: 16px; color: #FFFFFF; text-align: center">${marked(
+              answer
+            ).replace(
+              // Not currently working
+              /\*\*(.*?)\*\*/g,
+              "<h1 style='font-size: 20px; text-align: center'>$1</h1>"
+            )}</div>`;
+            handleChangeData({
+              nodes: [
+                {
+                  id: "central",
+                  name: centralNodeName,
+                  val: calculateNodeValue(answer > 100 ? 100 : answer),
+                },
+                ...notes.map((note) => ({
+                  id: note.id,
+                  name: note.name,
+                  val: calculateNodeValue(note.name),
+                })),
+              ],
+              links: notes.map((note) => ({
+                source: "central",
+                target: note.id,
+              })),
+            });
+          });
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+        });
     }
   };
 
@@ -98,6 +207,7 @@ export default function Bar({
             />
           )}
         </ButtonHalo>
+        {/* TODO: Currently, writing too much in the note goes past, and makes the placeholder look funky */}
         <FocusableInput
           isDarkMode={isDarkMode}
           setIsInputFocused={setIsInputFocused}
@@ -111,7 +221,6 @@ export default function Bar({
           isInputFocused={isInputFocused}
           search={search}
         />
-        {/* Render different icons depending on Capture Mode */}
         {isCaptureMode ? (
           <>
             <IconButton
