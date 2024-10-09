@@ -1,7 +1,6 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
 import path from "path";
 import process from "process";
-
 let mainWindow;
 
 app.whenReady().then(() => {
