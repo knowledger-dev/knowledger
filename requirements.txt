@@ -1,6 +1,11 @@
 fastapi
+uvicorn
+pydantic
+python-dotenv
 neo4j
 sentence-transformers
-python-dotenv
-nltk
-uvicorn  # If using for running FastAPI
+google-generativeai
+networkx
+scikit-learn
+numpy
+apscheduler
