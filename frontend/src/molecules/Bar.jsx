@@ -12,7 +12,7 @@ import { GiBrain } from "react-icons/gi";
 
 import { marked } from "marked";
 
-import HOST from "../VARS";
+import BACKEND_HOST from "../../electron/VARS";
 
 // Main functional component
 import PropTypes from "prop-types";
@@ -74,7 +74,7 @@ export default function Bar({
           .then((text) => {
             const lines = text.split("\n");
             lines.forEach((line) => {
-              fetch(`${HOST}/notes`, {
+              fetch(`${BACKEND_HOST}/notes`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -99,7 +99,7 @@ export default function Bar({
         return;
       }
 
-      fetch(`${HOST}/notes`, {
+      fetch(`${BACKEND_HOST}/notes`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -120,7 +120,7 @@ export default function Bar({
     } else {
       setIsInputFocused(false);
       setSearch("");
-      fetch(`${HOST}/rag_query`, {
+      fetch(`${BACKEND_HOST}/rag_query`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -138,7 +138,7 @@ export default function Bar({
           const fetchNotes = async (ids) => {
             const notes = await Promise.all(
               ids.map(async (id) => {
-                const response = await fetch(`${HOST}/notes/${id}`, {
+                const response = await fetch(`${BACKEND_HOST}/notes/${id}`, {
                   method: "GET",
                   headers: {
                     "Content-Type": "application/json",
