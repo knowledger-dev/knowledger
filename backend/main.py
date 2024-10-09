@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Dict, Any
 
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 
@@ -614,3 +615,12 @@ async def test_model():
     except Exception as e:
         logger.error(f"Model test failed: {e}")
         raise HTTPException(status_code=500, detail="SentenceTransformer model test failed.")
+    
+
+@app.get("/")
+async def root():
+    return {"message": "Hello from FastAPI!"}
+
+import uvicorn
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
