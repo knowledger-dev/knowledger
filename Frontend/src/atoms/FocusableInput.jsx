@@ -41,6 +41,7 @@ const FocusableInput = ({
 
   return (
     <>
+      {/* TODO: Format of rows doesn't revert after submitting a multi-lined query or input */}
       <textarea
         ref={inputRef}
         id="search"
