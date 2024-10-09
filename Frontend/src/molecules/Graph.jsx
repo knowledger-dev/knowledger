@@ -47,7 +47,7 @@ export default function Graph({
   useEffect(() => {
     if (graphRef.current && data) {
       const nodeCount = data.nodes.length;
-      const linkDistance = Math.max(1, 10 - nodeCount * 0.1);
+      const linkDistance = Math.max(1, 10 - nodeCount * 0.1); // link distance should actually increase as more nodes are created, otherwise they will all be pulled to center like crazy
       console.log("Change link distance!", linkDistance);
       applyGraphForces(graphRef, linkDistance, nodeRadius);
       graphRef.current.width = dimensions.width;

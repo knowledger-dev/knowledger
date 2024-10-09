@@ -36,9 +36,8 @@ const FocusableInput = ({
       inputRef.current.focus();
     } else {
       inputRef.current.blur(); // programmatically blur the input
-      setSearch(""); // clear the search input
     }
-  }, [isInputFocused, setSearch]);
+  }, [isInputFocused]);
 
   return (
     <>

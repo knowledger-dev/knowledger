@@ -1,4 +1,5 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
+import path from "path";
 
 let mainWindow;
 
@@ -9,6 +10,8 @@ app.whenReady().then(() => {
     webPreferences: {
       nodeIntegration: true, // Ensure this matches your app setup
       contextIsolation: false, // Ensure this matches your app setup
+      enableRemoteModule: true, // Ensure this matches your app setup
+      preload: "./preload.js", // Path to your preload script
     },
   });
 
@@ -24,24 +27,37 @@ app.whenReady().then(() => {
       mainWindow.webContents.send("focus-input");
     }
   });
+});
 
-  // // Listen for window resize event and reload the content
-  // // TODO: This is not the best way to handle window resize, as the app will reload, change later
-  // mainWindow.on("resize", () => {
-  //   mainWindow.reload();
-  // });
+app.on("window-all-closed", () => {
+  if (mainWindow.electronAPI.platform !== "darwin") {
+    app.quit();
+  }
+});
 
-  app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-      app.quit();
-    }
-  });
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    mainWindow = new BrowserWindow({
+      width: 800,
+      height: 600,
+      webPreferences: {
+        nodeIntegration: true, // Ensure this matches your app setup
+        contextIsolation: false, // Ensure this matches your app setup
+        enableRemoteModule: true, // Ensure this matches your app setup
+        preload: path.join("electron", "preload.js"), // Path to your preload script
+      },
+    });
+
+    mainWindow.loadURL("http://localhost:5173"); // Assuming your React app runs here
+  }
 });
 
 app.on("will-quit", () => {
   // Unregister all shortcuts
   globalShortcut.unregisterAll();
 });
+
+// Old code
 
 // const { app, BrowserWindow, globalShortcut } = require('electron');
 // const path = require('path');

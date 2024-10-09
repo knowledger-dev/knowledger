@@ -57,6 +57,8 @@ export default function Bar({
     if (isCaptureMode) {
       event.preventDefault();
       console.log(search);
+
+      // TODO: Add search and populate with results
       const randomValue = Math.floor(Math.random() * 12) + 2;
       handleChangeData({
         nodes: [{ id: num, name: search, val: randomValue }],
