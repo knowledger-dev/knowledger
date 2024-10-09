@@ -1,9 +1,11 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
 import path from "path";
+import process from "process";
 
 let mainWindow;
 
 app.whenReady().then(() => {
+  const __dirname = path.resolve();
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
@@ -11,14 +13,14 @@ app.whenReady().then(() => {
       nodeIntegration: true, // Ensure this matches your app setup
       contextIsolation: false, // Ensure this matches your app setup
       enableRemoteModule: true, // Ensure this matches your app setup
-      preload: "./preload.js", // Path to your preload script
+      preload: path.join(__dirname, "preload.js"), // Path to your preload script
     },
   });
 
   mainWindow.loadURL("http://localhost:5173"); // Assuming your React app runs here
 
   // Register a global shortcut listener
-  globalShortcut.register("Control+Space", () => {
+  globalShortcut.register("CommandOrControl+Shift+Space", () => {
     // Bring the window to the front
     if (mainWindow) {
       mainWindow.show();
@@ -30,8 +32,16 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (mainWindow.electronAPI.platform !== "darwin") {
-    app.quit();
+  try {
+    const platform = process.platform; // or the object you're trying to access
+    if (platform !== "darwin") {
+      // Unregister all shortcuts
+      globalShortcut.unregisterAll();
+
+      app.quit();
+    }
+  } catch (error) {
+    console.error("Error accessing platform:", error);
   }
 });
 
@@ -52,10 +62,10 @@ app.on("activate", () => {
   }
 });
 
-app.on("will-quit", () => {
-  // Unregister all shortcuts
-  globalShortcut.unregisterAll();
-});
+// app.on("will-quit", () => {
+//   // Unregister all shortcuts
+//   globalShortcut.unregisterAll();
+// });
 
 // Old code
 

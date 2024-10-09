@@ -41,29 +41,42 @@ const FocusableInput = ({
 
   return (
     <>
-      <input
+      <textarea
         ref={inputRef}
         id="search"
-        className={`w-[80%] py-4 px-2 bg-slate-300 text-black dark:text-white dark:bg-gray-800 rounded-2xl text-lg focus:outline-none focus:ring-0 transition-none duration-300 autofill:bg-slate-300 dark:autofill:bg-gray-800 max-md:text-sm`}
-        placeholder={isCaptureMode ? "Capture your thoughts..." : "Search..."}
+        rows="1"
+        className={`w-[80%] py-4 px-2 bg-slate-300 text-black dark:text-white dark:bg-gray-800 rounded-2xl text-lg focus:outline-none focus:ring-0 transition-none duration-300 autofill:bg-slate-300 dark:autofill:bg-gray-800 max-md:text-sm break-words resize-none`}
+        placeholder={
+          !isInputFocused
+            ? isCaptureMode
+              ? "Capture your thoughts..."
+              : "Search..."
+            : ""
+        }
         onFocus={() => setIsInputFocused(true)}
         onBlur={() => setIsInputFocused(false)}
         value={search}
         style={{
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: `${
+          color: `${
             isDarkMode
               ? search.length > 0
-                ? "black"
+                ? "white"
                 : "gray"
               : search.length > 0
-              ? "white"
+              ? "black"
               : "gray"
           }`,
-          transition: "background-color 5000s ease-in-out 0s",
+          wordWrap: "break-word",
+          overflow: "hidden",
+          maxHeight: "5em", // Set the maximum height to 5 lines
+          overflowY: "auto", // Enable vertical scrolling
         }}
         onKeyDown={onKeyDown}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          e.target.style.height = "auto";
+          e.target.style.height = `${e.target.scrollHeight}px`;
+        }}
       />
     </>
   );

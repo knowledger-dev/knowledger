@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI App
 app = FastAPI(title=Config.APP_TITLE)
 
+# Add CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow any origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Initialize Neo4j Connection
 neo4j_conn = Neo4jConnection()
 neo4j_conn.create_constraints()
