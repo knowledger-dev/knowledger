@@ -7,7 +7,7 @@ import Graph from "../molecules/Graph";
 export default function Search() {
   const [focusedNode, setFocusedNode] = useState(null);
   const [data, setData] = useState({
-    nodes: [{ id: 1, name: "OG", val: 1 }],
+    nodes: [],
     links: [],
   });
 
@@ -20,10 +20,10 @@ export default function Search() {
   useEffect(() => {
     if (isDarkModeRef.current) {
       document.documentElement.classList.add("dark");
-      setIsDarkMode(false);
+      setIsDarkMode(true);
     } else {
       document.documentElement.classList.remove("dark");
-      setIsDarkMode(true);
+      setIsDarkMode(false);
     }
   }, [isDarkModeRef]);
 
@@ -31,21 +31,21 @@ export default function Search() {
     if (isDarkModeRef.current) {
       document.documentElement.classList.remove("dark");
       localStorage.theme = "light";
-      setIsDarkMode(true);
+      setIsDarkMode(false);
     } else {
       document.documentElement.classList.add("dark");
       localStorage.theme = "dark";
-      setIsDarkMode(false);
+      setIsDarkMode(true);
     }
 
     isDarkModeRef.current = !isDarkModeRef.current;
   }
 
   const handleChangeData = (newData) => {
-    setData((prevData) => ({
-      nodes: [...prevData.nodes, ...newData.nodes],
-      links: [...prevData.links, ...newData.links],
-    }));
+    setData({
+      nodes: newData.nodes,
+      links: newData.links,
+    });
   };
 
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -58,12 +58,16 @@ export default function Search() {
   return (
     <>
       <div className="fixed w-full z-0 inset-2">
-        <Graph
-          data={data}
-          isDarkMode={isDarkMode}
-          focusedNode={focusedNode}
-          setFocusedNode={setFocusedNode}
-        />
+        {data.nodes.length !== 0 && (
+          <>
+            <Graph
+              data={data}
+              isDarkMode={isDarkMode}
+              focusedNode={focusedNode}
+              setFocusedNode={setFocusedNode}
+            />
+          </>
+        )}
       </div>
       <IconButton onClick={handleClick} className="absolute right-0 p-5 top-0">
         {isDarkMode ? (
@@ -72,7 +76,13 @@ export default function Search() {
           <AiOutlineMoon size={25} className="text-white" />
         )}
       </IconButton>
-      <section className="font-inter font-semibold w-full relative z-10">
+      <section
+        className={`font-inter font-semibold w-full fixed z-10 transition-transform duration-500 ${
+          data.nodes.length !== 0
+            ? "bottom-[5%]"
+            : "top-1/2 transform -translate-y-1/2"
+        }`}
+      >
         <div className="flex flex-col justify-center items-center">
           <h1
             className={`text-5xl p-10 text-black dark:text-white text-center max-md:text-xl transition-opacity duration-300 ${

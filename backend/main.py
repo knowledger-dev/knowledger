@@ -8,6 +8,7 @@ import asyncio
 from datetime import datetime
 from typing import List, Dict, Any
 
+
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,17 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastAPI App
 app = FastAPI(title=Config.APP_TITLE)
+
+# Add CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow any origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize Neo4j Connection
 neo4j_conn = Neo4jConnection()
@@ -603,3 +615,12 @@ async def test_model():
     except Exception as e:
         logger.error(f"Model test failed: {e}")
         raise HTTPException(status_code=500, detail="SentenceTransformer model test failed.")
+    
+
+@app.get("/")
+async def root():
+    return {"message": "Hello from FastAPI!"}
+
+import uvicorn
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
