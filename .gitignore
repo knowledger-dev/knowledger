@@ -1,4 +1,5 @@
 OLD/
 venv/
 .env
+Scripts/
 pyvenv.cfg
