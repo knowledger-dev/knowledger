@@ -6,6 +6,8 @@ import json
 import logging
 from functools import lru_cache
 from config import Config
+from passlib.context import CryptContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -58,3 +60,32 @@ def parse_tree_of_thoughts(output: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Unexpected error during JSON parsing: {e}")
         raise ValueError(f"Unexpected error: {e}")
+    
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+from bson import ObjectId
+from typing import Any, Dict
+
+def convert_objectid_to_str(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recursively convert ObjectId fields in a MongoDB document to string.
+    """
+    if not isinstance(data, dict):
+        return data
+    converted_data = {}
+    for key, value in data.items():
+        if isinstance(value, ObjectId):
+            converted_data[key] = str(value)
+        elif isinstance(value, list):
+            converted_data[key] = [convert_objectid_to_str(item) if isinstance(item, dict) else item for item in value]
+        elif isinstance(value, dict):
+            converted_data[key] = convert_objectid_to_str(value)
+        else:
+            converted_data[key] = value
+    return converted_data

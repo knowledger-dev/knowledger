@@ -1,148 +1,309 @@
 # db.py
-
-from typing import List
-from neo4j import GraphDatabase
 import logging
-from config import Config
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+import pymongo
+from pymongo import MongoClient, UpdateOne
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 
+from config import Config
+from utils import convert_objectid_to_str  # Import the helper function
+
+# Initialize Logging
 logger = logging.getLogger(__name__)
 
-class Neo4jConnection:
+class MongoDBConnection:
     def __init__(self):
         try:
-            self.driver = GraphDatabase.driver(
-                Config.NEO4J_URI,
-                auth=(Config.NEO4J_USER, Config.NEO4J_PASSWORD),
-                max_connection_pool_size=100  # Optimized pool size
-            )
-            logger.info("Neo4j connection established.")
+            self.client = MongoClient(Config.MONGODB_URI, serverSelectionTimeoutMS=5000)
+            self.db = self.client[Config.MONGODB_DB_NAME]
+            self.notes = self.db.notes
+            self.users = self.db.users  # Users collection
+            self.clusters = self.db.clusters
+            # Ensure indexes for performance
+            self._ensure_indexes()
+            logger.info("Connected to MongoDB successfully.")
         except Exception as e:
-            logger.error(f"Failed to create Neo4j driver: {e}")
+            logger.error(f"Failed to connect to MongoDB: {e}")
             raise
 
-    def verify_connectivity(self):
+    def _ensure_indexes(self):
+        """
+        Ensure that necessary indexes are created for optimal query performance.
+        """
         try:
-            self.driver.verify_connectivity()
+            # Unique index on username and email to prevent duplicates
+            self.users.create_index("username", unique=True)
+            self.users.create_index("email", unique=True)
+            # Index on 'similar_notes' for PageRank computations
+            self.notes.create_index("similar_notes")
+            # Index on 'cluster_id' for clustering
+            self.notes.create_index("cluster_id")
+            # Index on 'owner_username' to quickly retrieve user-specific notes
+            self.notes.create_index("owner_username")
+            logger.info("MongoDB indexes ensured.")
+        except Exception as e:
+            logger.error(f"Error creating indexes: {e}")
+            raise
+
+    def verify_connectivity(self) -> bool:
+        """
+        Verify if the MongoDB connection is alive.
+        """
+        try:
+            self.client.admin.command('ping')
             return True
         except Exception as e:
-            logger.error(f"Failed to connect to Neo4j: {e}")
+            logger.error(f"MongoDB connectivity verification failed: {e}")
             return False
 
-    def close(self):
-        self.driver.close()
-        logger.info("Neo4j connection closed.")
+    # User Management Methods
 
-    def create_constraints(self):
-        with self.driver.session() as session:
-            try:
-                session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (n:Note) REQUIRE n.id IS UNIQUE")
-                session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (c:Cluster) REQUIRE c.label IS UNIQUE")
-                session.run("CREATE INDEX IF NOT EXISTS FOR (n:Note) ON (n.pagerank)")
-                session.run("CREATE INDEX IF NOT EXISTS FOR (n:Note) ON (n.embedding)")
-                session.run("CREATE INDEX IF NOT EXISTS FOR (c:Cluster) ON (c.pagerank_weight)")
-                logger.info("Neo4j constraints and indexes ensured.")
-            except Exception as e:
-                logger.error(f"Error creating constraints/indexes: {e}")
+    def create_user(self, user_data: Dict[str, Any]):
+        """
+        Insert a new user into the 'users' collection.
+        """
+        try:
+            self.users.insert_one(user_data)
+            logger.debug(f"User {user_data['username']} created.")
+        except pymongo.errors.DuplicateKeyError as e:
+            logger.error(f"Duplicate user detected: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            raise
 
-    # Function to create a note
+    def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a user by their username.
+        """
+        try:
+            user = self.users.find_one({"username": username})
+            if user:
+                user = convert_objectid_to_str(user)  # Convert ObjectId to string
+            return user
+        except Exception as e:
+            logger.error(f"Error retrieving user {username}: {e}")
+            raise
+
+    # Note Management Methods (as previously defined)
+    
     def create_note(self, note_id: str, content: str, processed_content: str,
-                   embedding: list, timestamp: str, summary: str):
-        with self.driver.session() as session:
-            try:
-                session.run("""
-                CREATE (n:Note {
-                    id: $id,
-                    content: $content,
-                    processed_content: $processed_content,
-                    embedding: $embedding,
-                    timestamp: $timestamp,
-                    commonness: 0,
-                    pagerank: 0.0,
-                    summary: $summary
-                })
-                """,
-                id=note_id,
-                content=content,
-                processed_content=processed_content,
-                embedding=embedding,
-                timestamp=timestamp,
-                summary=summary)
-                logger.debug(f"Note {note_id} created in Neo4j.")
-            except Exception as e:
-                logger.error(f"Error creating note {note_id}: {e}")
-                raise
-
-    # Function to retrieve a note
-    def get_note(self, note_id: str):
-        with self.driver.session() as session:
-            try:
-                result = session.run("""
-                MATCH (n:Note {id: $id})
-                SET n.commonness = n.commonness + 1
-                RETURN n.id as id, n.content as content, n.processed_content as processed_content,
-                       n.timestamp as timestamp, n.commonness as commonness, n.pagerank as pagerank, n.summary as summary
-                """, id=note_id).single()
-                return result
-            except Exception as e:
-                logger.error(f"Error retrieving note {note_id}: {e}")
-                raise
-
-    # Modified update_relationships function without GDS
-    def update_relationships(self, note_id: str, similarity_threshold: float):
-        with self.driver.session() as session:
-            try:
-                session.run("""
-                MATCH (n1:Note {id: $id}), (n2:Note)
-                WHERE n1 <> n2 AND n1.embedding IS NOT NULL AND n2.embedding IS NOT NULL
-                WITH n1, n2,
-                     reduce(dot = 0.0, i IN range(0, size(n1.embedding)-1) | dot + n1.embedding[i] * n2.embedding[i]) AS dotProduct,
-                     sqrt(reduce(acc = 0.0, x IN n1.embedding | acc + x * x)) AS magA,
-                     sqrt(reduce(acc = 0.0, x IN n2.embedding | acc + x * x)) AS magB
-                WITH n1, n2, dotProduct / (magA * magB) AS cosine_similarity
-                WHERE cosine_similarity > $threshold
-                MERGE (n1)-[r:SIMILAR]->(n2)
-                SET r.score = cosine_similarity
-                """, id=note_id, threshold=similarity_threshold)
-                logger.debug(f"SIMILAR relationships updated for note {note_id}.")
-            except Exception as e:
-                logger.error(f"Error updating relationships for note {note_id}: {e}")
-                raise
-
-    # Modified get_similar_notes function without GDS
-    def get_similar_notes(self, query_embedding: List[float], similarity_threshold: float, limit: int):
-        with self.driver.session() as session:
-            try:
-                result = session.run("""
-                MATCH (n:Note)
-                WHERE n.embedding IS NOT NULL AND size(n.embedding) > 0
-                WITH n,
-                     reduce(dot = 0.0, i IN range(0, size(n.embedding)-1) | dot + n.embedding[i] * $query_embedding[i]) AS dotProduct,
-                     sqrt(reduce(acc = 0.0, x IN n.embedding | acc + x * x)) AS magN,
-                     sqrt(reduce(acc = 0.0, x IN $query_embedding | acc + x * x)) AS magQ
-                WITH n, dotProduct / (magN * magQ) AS cosine_similarity
-                WHERE cosine_similarity > $threshold
-                RETURN n.id AS id, n.content AS content, n.pagerank AS pagerank, cosine_similarity
-                ORDER BY cosine_similarity DESC, n.pagerank DESC
-                LIMIT $limit
-                """, query_embedding=query_embedding, threshold=similarity_threshold, limit=limit)
-                
-                notes = [record for record in result]
-                return notes
-            except Exception as e:
-                logger.error(f"Error retrieving similar notes: {e}")
-                raise
-
-    # Function to retrieve cluster content
+                   embedding: List[float], timestamp: datetime, summary: str,
+                   owner_username: str):
+        """
+        Insert a new note into the 'notes' collection.
+        """
+        try:
+            note_document = {
+                "_id": note_id,  # Custom string ID
+                "content": content,
+                "processed_content": processed_content,
+                "embedding": embedding,
+                "timestamp": timestamp,  # Stored as datetime
+                "summary": summary,
+                "commonness": 0,
+                "pagerank": 0.0,
+                "similar_notes": [],
+                "cluster_id": None,
+                "owner_username": owner_username
+            }
+            self.notes.insert_one(note_document)
+            logger.debug(f"Note {note_id} inserted into MongoDB.")
+        except pymongo.errors.DuplicateKeyError:
+            logger.error(f"Duplicate note ID detected: {note_id}")
+            raise
+        except Exception as e:
+            logger.error(f"Error inserting note {note_id}: {e}")
+            raise
+    
+    def get_note(self, note_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a single note by its ID.
+        """
+        try:
+            note = self.notes.find_one({"_id": note_id})
+            return note
+        except Exception as e:
+            logger.error(f"Error retrieving note {note_id}: {e}")
+            raise
+    
+    def get_notes(self, note_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Retrieve multiple notes by their IDs.
+        """
+        try:
+            notes_cursor = self.notes.find({"_id": {"$in": note_ids}})
+            notes = list(notes_cursor)
+            return notes
+        except Exception as e:
+            logger.error(f"Error retrieving notes {note_ids}: {e}")
+            raise
+    
+    def get_cluster(self, cluster_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a single cluster by its ID.
+        """
+        try:
+            cluster = self.clusters.find_one({"_id": cluster_id})
+            return cluster
+        except Exception as e:
+            logger.error(f"Error retrieving cluster {cluster_id}: {e}")
+            raise
+    
+    def get_clusters(self, cluster_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Retrieve multiple clusters by their IDs.
+        """
+        try:
+            clusters_cursor = self.clusters.find({"_id": {"$in": cluster_ids}})
+            clusters = list(clusters_cursor)
+            return clusters
+        except Exception as e:
+            logger.error(f"Error retrieving clusters {cluster_ids}: {e}")
+            raise
+    
     def get_cluster_content(self, note_ids: List[str]) -> str:
-        with self.driver.session() as session:
-            try:
-                contents = session.run("""
-                MATCH (n:Note)
-                WHERE n.id IN $ids
-                RETURN n.content AS content
-                """, ids=note_ids)
-                combined_content = "\n".join([record["content"] for record in contents])
-                return combined_content
-            except Exception as e:
-                logger.error(f"Error retrieving cluster content: {e}")
-                raise
+        """
+        Concatenate the content of all notes in a cluster.
+        """
+        try:
+            notes_cursor = self.notes.find({"_id": {"$in": note_ids}}, {"content": 1})
+            contents = [note["content"] for note in notes_cursor]
+            combined_content = "\n".join(contents)
+            return combined_content
+        except Exception as e:
+            logger.error(f"Error getting cluster content for notes {note_ids}: {e}")
+            raise
+    
+    def update_relationships(self, note_id: str, similarity_threshold: float):
+        """
+        Update the 'similar_notes' field for a given note based on embedding similarity.
+        This is a simplified example; in a production environment, consider more efficient methods.
+        """
+        try:
+            # Fetch the embedding of the current note
+            current_note = self.get_note(note_id)
+            if not current_note:
+                logger.error(f"Note {note_id} not found for updating relationships.")
+                return
+            
+            current_embedding = np.array(current_note["embedding"]).reshape(1, -1)
+            
+            # Fetch embeddings of all other notes
+            other_notes_cursor = self.notes.find(
+                {"_id": {"$ne": note_id}, "embedding": {"$exists": True, "$ne": []}},
+                {"_id": 1, "embedding": 1}
+            )
+            
+            similar_note_ids = []
+            for note in other_notes_cursor:
+                other_embedding = np.array(note["embedding"]).reshape(1, -1)
+                similarity = cosine_similarity(current_embedding, other_embedding)[0][0]
+                if similarity >= similarity_threshold:
+                    similar_note_ids.append(note["_id"])
+            
+            # Update the 'similar_notes' field
+            self.notes.update_one(
+                {"_id": note_id},
+                {"$set": {"similar_notes": similar_note_ids}}
+            )
+            logger.debug(f"Updated similar_notes for note {note_id} with {len(similar_note_ids)} similar notes.")
+        
+        except Exception as e:
+            logger.error(f"Error updating relationships for note {note_id}: {e}")
+            raise
+    
+    def get_similar_notes(
+        self,
+        query_embedding: List[float],
+        similarity_threshold: float,
+        limit: int,
+        use_pagerank_weighting: bool = False,
+        owner_username: str = ""
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve notes similar to the query_embedding based on cosine similarity.
+        Optionally weight the similarity by PageRank scores.
+        Filters notes by owner_username.
+        """
+        try:
+            # Convert query_embedding to numpy array
+            query_emb = np.array(query_embedding).reshape(1, -1)
+
+            # Fetch notes belonging to the user with embeddings
+            notes_cursor = self.notes.find(
+                {
+                    "embedding": {"$exists": True, "$ne": []},
+                    "owner_username": owner_username
+                }
+            )
+            similar_notes = []
+            for note in notes_cursor:
+                note_id = note["_id"]
+                embedding = np.array(note["embedding"]).reshape(1, -1)
+                similarity = cosine_similarity(query_emb, embedding)[0][0]
+                if similarity >= similarity_threshold:
+                    pagerank = note.get("pagerank", 0.0)
+                    if use_pagerank_weighting:
+                        weighted_similarity = similarity * pagerank
+                    else:
+                        weighted_similarity = similarity
+                    # Include all note fields in the result
+                    note_data = note.copy()
+                    note_data["id"] = note_data.pop("_id")
+                    note_data["similarity"] = similarity
+                    note_data["weighted_similarity"] = weighted_similarity
+                    similar_notes.append(note_data)
+
+            # Sort notes based on similarity or weighted_similarity
+            if use_pagerank_weighting:
+                similar_notes.sort(key=lambda x: x["weighted_similarity"], reverse=True)
+            else:
+                similar_notes.sort(key=lambda x: x["similarity"], reverse=True)
+
+            # Limit the number of results
+            limited_notes = similar_notes[:limit]
+            return limited_notes
+
+        except Exception as e:
+            logger.error(f"Error retrieving similar notes: {e}")
+            raise
+
+    def get_note_owned_by_user(self, note_id: str, owner_username: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a single note by its ID and owner.
+        """
+        try:
+            note = self.notes.find_one({"_id": note_id, "owner_username": owner_username})
+            return note
+        except Exception as e:
+            logger.error(f"Error retrieving note {note_id}: {e}")
+            raise
+
+    
+    def get_all_embeddings(self) -> List[np.ndarray]:
+        """
+        Retrieve all embeddings from the notes collection.
+        Useful for bulk operations like clustering.
+        """
+        try:
+            embeddings_cursor = self.notes.find(
+                {"embedding": {"$exists": True, "$ne": []}},
+                {"embedding": 1}
+            )
+            embeddings = [np.array(note["embedding"]) for note in embeddings_cursor]
+            return embeddings
+        except Exception as e:
+            logger.error(f"Error retrieving all embeddings: {e}")
+            raise
+    
+    def get_notes_by_ids(self, note_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        Retrieve notes by a list of note_ids.
+        """
+        return self.get_notes(note_ids)
+    
+    def close(self):
+        self.client.close()
