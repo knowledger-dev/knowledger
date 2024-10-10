@@ -42,6 +42,7 @@ pymongo
 pyparsing==3.1.4
 python-dotenv==1.0.1
 python-jose
+python-multipart
 pytz==2024.2
 PyYAML==6.0.2
 regex==2024.9.11
