@@ -180,7 +180,7 @@ class MongoDBConnection:
     def update_relationships(self, note_id: str, similarity_threshold: float):
         """
         Update the 'similar_notes' field for a given note based on embedding similarity.
-        This is a simplified example; in a production environment, consider more efficient methods.
+        Also updates the 'similar_notes' field of similar notes to include the current note.
         """
         try:
             # Fetch the embedding of the current note
@@ -188,32 +188,39 @@ class MongoDBConnection:
             if not current_note:
                 logger.error(f"Note {note_id} not found for updating relationships.")
                 return
-            
+
             current_embedding = np.array(current_note["embedding"]).reshape(1, -1)
-            
+
             # Fetch embeddings of all other notes
             other_notes_cursor = self.notes.find(
                 {"_id": {"$ne": note_id}, "embedding": {"$exists": True, "$ne": []}},
                 {"_id": 1, "embedding": 1}
             )
-            
+
             similar_note_ids = []
             for note in other_notes_cursor:
+                other_note_id = note["_id"]
                 other_embedding = np.array(note["embedding"]).reshape(1, -1)
                 similarity = cosine_similarity(current_embedding, other_embedding)[0][0]
                 if similarity >= similarity_threshold:
-                    similar_note_ids.append(note["_id"])
-            
-            # Update the 'similar_notes' field
+                    similar_note_ids.append(other_note_id)
+                    # Update the 'similar_notes' field of the similar note to include the current note
+                    self.notes.update_one(
+                        {"_id": other_note_id},
+                        {"$addToSet": {"similar_notes": note_id}}
+                    )
+
+            # Update the 'similar_notes' field of the current note
             self.notes.update_one(
                 {"_id": note_id},
                 {"$set": {"similar_notes": similar_note_ids}}
             )
             logger.debug(f"Updated similar_notes for note {note_id} with {len(similar_note_ids)} similar notes.")
-        
+
         except Exception as e:
             logger.error(f"Error updating relationships for note {note_id}: {e}")
             raise
+
     
     def get_similar_notes(
         self,
