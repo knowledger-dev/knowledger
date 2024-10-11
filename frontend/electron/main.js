@@ -19,9 +19,6 @@ const createWindow = () => {
   // In production, you should load the built index.html file (from /build or /dist)
   // mainWindow.loadFile(path.join(__dirname, "dist/index.html"));
   mainWindow.loadURL(CONSTANTS.FRONTEND_HOST);
-
-  // Open the DevTools (for debugging)
-  mainWindow.webContents.openDevTools();
 };
 
 app.whenReady().then(() => {
