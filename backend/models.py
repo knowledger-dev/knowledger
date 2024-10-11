@@ -23,7 +23,7 @@ class UserCreate(BaseModel):
 
 # Model for user data stored in the database (internal use)
 class UserInDB(BaseModel):
-    id: str = Field(..., alias='_id')  # MongoDB's _id field as string
+    id: Optional[str] = Field(None, alias='_id')  # MongoDB's _id field as string
     username: str
     email: EmailStr
     hashed_password: str
