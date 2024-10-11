@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuthContext } from "./useAuthContext";
-
+import { toast } from 'react-toastify';
 import * as CONSTANTS from "../BACKEND_VARS";
 
 export const useLogin = () => {
@@ -11,6 +11,7 @@ export const useLogin = () => {
   const login = async (username, password) => {
     setIsLoading(true);
     setError(null);
+    toast.info('Logging in...', { autoClose: false });
 
     const formData = new URLSearchParams();
     formData.append("username", username);
@@ -29,6 +30,8 @@ export const useLogin = () => {
 
       setError(json.error);
 
+      toast.dismiss();  
+      toast.error('Login failed. Please try again.');
       console.log("Error logging in:", json);
     }
 
@@ -40,6 +43,8 @@ export const useLogin = () => {
 
       dispatch({ type: "LOGIN", payload: json });
 
+      toast.dismiss();
+      toast.success('Login successful!');
       console.log("User logged in:", json);
 
       setIsLoading(false);

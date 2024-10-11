@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuthContext } from "./useAuthContext";
-
+import { toast } from 'react-toastify';
 import * as CONSTANTS from "../BACKEND_VARS";
 
 export const useSignup = () => {
@@ -24,7 +24,8 @@ export const useSignup = () => {
       setIsLoading(false);
 
       setError(json.error);
-
+      toast.dismiss();  
+      toast.error('Registration failed. Please try again.');
       console.log("Error signing up:", json);
     }
 
@@ -35,6 +36,9 @@ export const useSignup = () => {
       // update the auth context
 
       dispatch({ type: "LOGIN", payload: json });
+
+      toast.dismiss();
+      toast.success('Thank you for signing up! Login now to continue.');
 
       console.log("User signed up:", json);
 
