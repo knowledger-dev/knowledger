@@ -284,7 +284,7 @@ scheduler.add_job(
     func=compute_pagerank,
     trigger=IntervalTrigger(minutes=15),
     id='compute_pagerank_job',
-    name='Compute PageRank every 30 minutes',
+    name='Compute PageRank every 15 minutes',
     replace_existing=True
 )
 
@@ -293,7 +293,7 @@ scheduler.add_job(
     func=perform_clustering,
     trigger=IntervalTrigger(minutes=15),
     id='perform_clustering_job',
-    name='Perform Clustering every 30 minutes',
+    name='Perform Clustering every 15 minutes',
     replace_existing=True
 )
 

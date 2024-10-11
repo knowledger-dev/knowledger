@@ -13,6 +13,7 @@ import { marked } from "marked";
 import * as CONSTANTS from "../BACKEND_VARS";
 import PropTypes from "prop-types";
 import FocusableInput from "../atoms/FocusableInput";
+import { toast } from "react-toastify";
 import { useAuthContext } from "../hooks/useAuthContext";
 
 export default function Bar({
@@ -30,12 +31,15 @@ export default function Bar({
   const toggleNextMode = useCallback(() => {
     if (currentMode === "capture") {
       setCurrentMode("search");
+      toast.info("Switched to Search Mode");
       localStorage.setItem("currentMode", "search");
     } else if (currentMode === "search") {
       setCurrentMode("searchai");
+      toast.info("Switched to AI Query Mode");
       localStorage.setItem("currentMode", "searchai");
     } else {
       setCurrentMode("capture");
+      toast.info("Switched to Capture Mode");
       localStorage.setItem("currentMode", "capture");
     }
   }, [currentMode, setCurrentMode]);
@@ -75,10 +79,13 @@ export default function Bar({
         let newMode;
         if (key === "c") {
           newMode = "capture";
+          toast.info("Switched to Capture Mode");
         } else if (key === "s") {
           newMode = "search";
+          toast.info("Switched to Search Mode");
         } else if (key === "a") {
           newMode = "searchai";
+          toast.info("Switched to AI Query Mode");
         } else if (event.ctrlKey && event.shiftKey && key === "m") {
           document.body.removeChild(overlay);
           document.removeEventListener("keydown", handleKeyPress);
@@ -106,8 +113,10 @@ export default function Bar({
   // Function to handle file upload
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
+    toast.info("Uploading file...", {autoClose: false});
     if (file) {
       console.log(file);
+      toast.success("File uploaded successfully!");
     }
   };
 
@@ -115,6 +124,7 @@ export default function Bar({
   const calculateNodeValue = (label) => {
     // const baseSize = 10; // You can adjust this base size as needed
     // return label.length / baseSize > 10 ? 10 : label.length / baseSize;
+    console.log(label);
     return 2;
   };
 
@@ -136,6 +146,7 @@ export default function Bar({
     }
 
     if (currentMode === "capture") {
+      toast.info("Saving note...", {autoClose: false});
       console.log("Saving note...");
       fetch(`${CONSTANTS.BACKEND_HOST}/notes`, {
         method: "POST",
@@ -150,6 +161,7 @@ export default function Bar({
       })
         .then((response) => response.json())
         .then((data) => {
+          toast.success("Note saved successfully!");
           console.log("Note saved:", data);
           setSearch("");
         })
@@ -157,6 +169,7 @@ export default function Bar({
           console.error("Error:", error);
         });
     } else if (currentMode === "search") {
+      toast.info("Searching...", {autoClose: false});
       setIsInputFocused(false);
       fetch(`${CONSTANTS.BACKEND_HOST}/query`, {
         method: "POST",
@@ -192,6 +205,7 @@ export default function Bar({
             }
           }
 
+          toast.success("Search loaded!")
           console.log("Nodes: ", nodes);
           console.log("Links: ", links);
 
@@ -199,9 +213,11 @@ export default function Bar({
         })
 
         .catch((error) => {
+          toast.error("Error: " + error.message, { autoClose: false });
           console.error("Error:", error);
         });
     } else if (currentMode === "searchai") {
+      toast.info("Knowledging...", { autoClose: false });
       setIsInputFocused(false);
       fetch(`${CONSTANTS.BACKEND_HOST}/rag_query`, {
         method: "POST",
@@ -215,6 +231,8 @@ export default function Bar({
       })
         .then((response) => response.json())
         .then((data) => {
+          toast.dismiss()
+          toast.success("Search loaded! Fetching notes...", {autoClose: false})
           console.log(data);
           setSearch("");
 
@@ -270,6 +288,8 @@ export default function Bar({
           });
         })
         .catch((error) => {
+          toast.error("Error: " + error.message, {
+            autoClose: false});
           console.error("Error:", error);
         });
     }
