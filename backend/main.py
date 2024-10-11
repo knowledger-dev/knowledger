@@ -332,7 +332,11 @@ async def register_user(user_input: UserCreate):
         is_active=True,
         created_at=datetime.utcnow()
     )
-    mongodb_conn.create_user(user_in_db.dict(by_alias=True))
+
+    # Convert to dict, excluding unset and None values
+    user_data = user_in_db.dict(by_alias=True, exclude_unset=True, exclude_none=True)
+
+    mongodb_conn.create_user(user_data)
 
     user = mongodb_conn.get_user_by_username(user_input.username)
     if not user:
