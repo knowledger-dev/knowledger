@@ -113,8 +113,9 @@ export default function Bar({
 
   // Function to calculate node value based on label size
   const calculateNodeValue = (label) => {
-    const baseSize = 10; // You can adjust this base size as needed
-    return label.length / baseSize > 10 ? 10 : label.length / baseSize;
+    // const baseSize = 10; // You can adjust this base size as needed
+    // return label.length / baseSize > 10 ? 10 : label.length / baseSize;
+    return 2;
   };
 
   // useEffect to bind and unbind keyboard shortcuts
@@ -240,12 +241,12 @@ export default function Bar({
           };
 
           fetchNotes(referenced_note_ids).then((notes) => {
-            const centralNodeName = `<div style="font-size: 16px; color: #FFFFFF; text-align: center">${marked(
+            const centralNodeName = `<div style="font-size: 16px; color: #FFFFFF">${marked(
               answer
             ).replace(
               // Not currently working
               /\*\*(.*?)\*\*/g,
-              "<h1 style='font-size: 20px; text-align: center'>$1</h1>"
+              "<h1 style='font-size: 20px'>$1</h1>"
             )}</div>`;
 
             handleChangeData({
@@ -253,7 +254,7 @@ export default function Bar({
                 {
                   id: "central",
                   name: centralNodeName,
-                  val: calculateNodeValue(answer > 100 ? 100 : answer),
+                  val: 15,
                 },
                 ...notes.map((note) => ({
                   id: note.id,

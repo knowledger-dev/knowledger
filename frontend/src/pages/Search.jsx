@@ -3,9 +3,11 @@ import Bar from "../molecules/Bar";
 import { AiOutlineSun, AiOutlineMoon } from "react-icons/ai";
 import IconButton from "../atoms/IconButton";
 import Graph from "../molecules/Graph";
+import SideInfo from "../molecules/SideInfo";
 
 export default function Search() {
   const [focusedNode, setFocusedNode] = useState(null);
+  const [info, setInfo] = useState("");
   const [data, setData] = useState({
     nodes: [],
     links: [],
@@ -71,6 +73,7 @@ export default function Search() {
               isDarkMode={isDarkMode}
               focusedNode={focusedNode}
               setFocusedNode={setFocusedNode}
+              setInfo={setInfo}
             />
           </>
         )}
@@ -113,6 +116,9 @@ export default function Search() {
             setIsInputFocused={setIsInputFocused}
             isInputFocused={isInputFocused}
           />
+        </div>
+        <div className="fixed right-0 top-1/2 transform -translate-y-1/2 w-[30%]">
+          <SideInfo info={info} setInfo={setInfo} />
         </div>
       </section>
     </>

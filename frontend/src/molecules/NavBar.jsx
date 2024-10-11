@@ -6,6 +6,7 @@ import { useLogout } from "../hooks/useLogout";
 export default function NavBar() {
   const { user } = useAuthContext();
   const [isLogin, setIsLogin] = useState(true);
+  const [isNavVisible, setIsNavVisible] = useState(false);
 
   const { logout } = useLogout();
 
@@ -20,36 +21,46 @@ export default function NavBar() {
     handleButtonClick(isLogin ? "/signup" : "/login");
   };
 
+  const toggleNavVisibility = () => {
+    setIsNavVisible(!isNavVisible);
+  };
+
   return (
-    <nav className="flex flex-col justify-start items-center bg-purple-900 w-max p-6 font-inter font-bold z-10 gap-6">
+    <>
       <button
-        onClick={() => handleButtonClick("/")}
-        className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
+        onClick={toggleNavVisibility}
+        className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4 fixed bottom-0 left-0 m-4 z-20 md:hidden"
       >
-        Agent
+        {isNavVisible ? "Hide Menu" : "Show Menu"}
       </button>
-      {!user && (
-        <button
-          onClick={toggleLoginSignup}
-          className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
-        >
-          {isLogin ? "Signup instead" : "Login instead"}
-        </button>
-      )}
-      {user && (
-        <button
-          onClick={logout}
-          className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
-        >
-          Logout
-        </button>
-      )}
-      {/* <button
-        onClick={() => handleButtonClick("/settings")}
-        className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer"
+      <nav
+        className={`flex flex-col justify-start items-center bg-purple-900 w-max p-6 font-inter font-bold z-10 gap-6 transition-transform duration-300 ${
+          isNavVisible ? "translate-x-0" : "-translate-x-full"
+        } md:translate-x-0`}
       >
-        <AiOutlineSetting size={25} />
-      </button> */}
-    </nav>
+        <button
+          onClick={() => handleButtonClick("/")}
+          className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
+        >
+          Agent
+        </button>
+        {!user && (
+          <button
+            onClick={toggleLoginSignup}
+            className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
+          >
+            {isLogin ? "Signup instead" : "Login instead"}
+          </button>
+        )}
+        {user && (
+          <button
+            onClick={logout}
+            className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
+          >
+            Logout
+          </button>
+        )}
+      </nav>
+    </>
   );
 }
