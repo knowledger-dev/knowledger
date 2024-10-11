@@ -323,10 +323,17 @@ async def default_post():
 async def register_user(user_input: UserCreate):
     if mongodb_conn.get_user_by_username(user_input.username):
         raise HTTPException(status_code=400, detail="Username already registered")
+
     hashed_password = hash_password(user_input.password)
-    user_data = user_input.dict()
-    user_data['hashed_password'] = hashed_password
-    mongodb_conn.create_user(user_data)
+    user_in_db = UserInDB(
+        username=user_input.username,
+        email=user_input.email,
+        hashed_password=hashed_password,
+        is_active=True,
+        created_at=datetime.utcnow()
+    )
+    mongodb_conn.create_user(user_in_db.dict(by_alias=True))
+
     user = mongodb_conn.get_user_by_username(user_input.username)
     if not user:
         raise HTTPException(status_code=500, detail="User creation failed.")
