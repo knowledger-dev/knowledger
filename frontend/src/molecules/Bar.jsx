@@ -113,8 +113,9 @@ export default function Bar({
 
   // Function to calculate node value based on label size
   const calculateNodeValue = (label) => {
-    const baseSize = 10; // You can adjust this base size as needed
-    return label.length / baseSize > 10 ? 10 : label.length / baseSize;
+    // const baseSize = 10; // You can adjust this base size as needed
+    // return label.length / baseSize > 10 ? 10 : label.length / baseSize;
+    return 2;
   };
 
   // useEffect to bind and unbind keyboard shortcuts
@@ -253,7 +254,7 @@ export default function Bar({
                 {
                   id: "central",
                   name: centralNodeName,
-                  val: calculateNodeValue(answer > 100 ? 100 : answer),
+                  val: 15,
                 },
                 ...notes.map((note) => ({
                   id: note.id,
