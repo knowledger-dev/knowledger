@@ -6,11 +6,15 @@ import { useEffect, useRef, useState } from "react";
 const applyGraphForces = (graphRef, linkDistance, nodeRadius) => {
   graphRef.current.d3Force("link").iterations(1).distance(linkDistance);
 
-  graphRef.current.d3Force("charge").strength(0).distanceMin(4).distanceMax(4);
+  graphRef.current
+    .d3Force("charge")
+    .strength(-300)
+    .distanceMin(6)
+    .distanceMax(6);
 
   graphRef.current.d3Force(
     "collide",
-    forceCollide(nodeRadius).strength(0.5).iterations(1)
+    forceCollide(nodeRadius).strength(0.01).iterations(1)
   );
   graphRef.current.d3ReheatSimulation();
 };
@@ -45,7 +49,7 @@ export default function Graph({
 
   useEffect(() => {
     if (graphRef.current && data) {
-      const linkDistance = 40; // make it constant for now as radius is that of the highest
+      const linkDistance = 100; // make it constant for now as radius is that of the highest
       console.log("Change link distance!", linkDistance);
       const largestNodeRadius = Math.max(...data.nodes.map((node) => node.val));
       applyGraphForces(graphRef, linkDistance, largestNodeRadius);
