@@ -241,12 +241,12 @@ export default function Bar({
           };
 
           fetchNotes(referenced_note_ids).then((notes) => {
-            const centralNodeName = `<div style="font-size: 16px; color: #FFFFFF; text-align: center">${marked(
+            const centralNodeName = `<div style="font-size: 16px; color: #FFFFFF">${marked(
               answer
             ).replace(
               // Not currently working
               /\*\*(.*?)\*\*/g,
-              "<h1 style='font-size: 20px; text-align: center'>$1</h1>"
+              "<h1 style='font-size: 20px'>$1</h1>"
             )}</div>`;
 
             handleChangeData({

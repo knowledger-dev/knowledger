@@ -24,6 +24,7 @@ export default function Graph({
   isDarkMode,
   focusedNode,
   setFocusedNode,
+  setInfo,
 }) {
   const graphRef = useRef(null);
   const [dimensions, setDimensions] = useState({
@@ -92,15 +93,10 @@ export default function Graph({
           graphData={data}
           width={dimensions.width}
           height={dimensions.height}
-          // nodeCanvasObject={(node, ctx, globalScale) => {
-          //   const label = node.name;
-          //   const fontSize = 12 / globalScale;
-          //   ctx.font = `${fontSize}px Sans-Serif`;
-          //   ctx.fillStyle = isDarkMode ? "white" : "black";
-          //   ctx.textAlign = "center";
-          //   ctx.textBaseline = "middle";
-          //   ctx.fillText(label, node.x, node.y);
-          // }}
+          onNodeClick={(node) => {
+            console.log(`Node clicked: ${node.name}`);
+            setInfo(node.name); // can change later to include all data
+          }}
           backgroundColor={
             isDarkMode ? "rgba(0, 0, 0, 1)" : "rgba(255, 255, 255, 1)"
           }
@@ -144,4 +140,5 @@ Graph.propTypes = {
   isDarkMode: PropTypes.bool.isRequired,
   focusedNode: PropTypes.string,
   setFocusedNode: PropTypes.func.isRequired,
+  setInfo: PropTypes.func.isRequired,
 };
