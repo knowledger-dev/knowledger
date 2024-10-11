@@ -50,10 +50,16 @@ export default function Search() {
 
   const [isInputFocused, setIsInputFocused] = useState(false);
 
-  const [isCaptureMode, setIsCaptureMode] = useState(() => {
-    const savedMode = localStorage.getItem("isCaptureMode");
-    return savedMode !== null ? JSON.parse(savedMode) : false;
+  const [currentMode, setCurrentMode] = useState(() => {
+    const savedMode = localStorage.getItem("currentMode");
+    return ["capture", "search", "searchai"].includes(savedMode)
+      ? savedMode
+      : "search"; // Default to "search" mode if not valid
   });
+
+  useEffect(() => {
+    localStorage.setItem("currentMode", currentMode);
+  }, [currentMode]);
 
   return (
     <>
@@ -89,12 +95,18 @@ export default function Search() {
               isInputFocused ? "opacity-100" : "opacity-30"
             }`}
           >
-            {isCaptureMode ? "Capture your thoughts" : "Ask your agent"}
+            {currentMode === "capture"
+              ? "Capture your thoughts"
+              : currentMode === "search"
+              ? "Search your notes"
+              : currentMode === "searchai"
+              ? "Ask your agent"
+              : "Mode is currently undetermined"}
           </h1>
 
           <Bar
-            isCaptureMode={isCaptureMode}
-            setIsCaptureMode={setIsCaptureMode}
+            currentMode={currentMode}
+            setCurrentMode={setCurrentMode}
             isDarkMode={isDarkMode}
             handleChangeData={handleChangeData}
             setFocusedNode={setFocusedNode}

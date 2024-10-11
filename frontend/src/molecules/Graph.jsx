@@ -57,8 +57,7 @@ export default function Graph({
     if (focusedNode) {
       const fNode = data.nodes.find((n) => n.name === focusedNode);
       if (fNode) {
-        const padding =
-          Math.min(window.innerWidth, window.innerHeight) * 0.2 + 100; // Padding, arbitrary, can be dependent on node label size later
+        const padding = Math.min(window.innerWidth, window.innerHeight) * 0.2; // Padding, arbitrary, can be dependent on node label size later
         graphRef.current.zoomToFit(
           2000,
           padding,
