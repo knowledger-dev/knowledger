@@ -3,4 +3,5 @@ venv/
 .env
 Scripts/
 pyvenv.cfg
-Python/
+dist/
+node_modules/

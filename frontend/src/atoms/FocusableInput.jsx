@@ -3,7 +3,7 @@ const { ipcRenderer } = window.require("electron");
 import PropTypes from "prop-types";
 
 const FocusableInput = ({
-  isCaptureMode,
+  currentMode,
   setIsInputFocused,
   isDarkMode,
   setSearch,
@@ -39,6 +39,22 @@ const FocusableInput = ({
     }
   }, [isInputFocused]);
 
+  const getPlaceholderText = () => {
+    if (!isInputFocused) {
+      switch (currentMode) {
+        case "capture":
+          return "Capture your thoughts...";
+        case "search":
+          return "Search...";
+        case "searchai":
+          return "Search with AI...";
+        default:
+          return "";
+      }
+    }
+    return "";
+  };
+
   return (
     <>
       {/* TODO: Format of rows doesn't revert after submitting a multi-lined query or input */}
@@ -46,14 +62,8 @@ const FocusableInput = ({
         ref={inputRef}
         id="search"
         rows="1"
-        className={`w-[80%] py-4 px-2 bg-slate-300 text-black dark:text-white dark:bg-gray-800 rounded-2xl text-lg focus:outline-none focus:ring-0 transition-none duration-300 autofill:bg-slate-300 dark:autofill:bg-gray-800 max-md:text-sm break-words resize-none`}
-        placeholder={
-          !isInputFocused
-            ? isCaptureMode
-              ? "Capture your thoughts..."
-              : "Search..."
-            : ""
-        }
+        className={`w-[100%] py-4 px-2 bg-slate-300 text-black dark:text-white dark:bg-gray-800 rounded-2xl text-lg focus:outline-none focus:ring-0 transition-none duration-300 autofill:bg-slate-300 dark:autofill:bg-gray-800 max-md:text-sm break-words resize-none`}
+        placeholder={getPlaceholderText()}
         onFocus={() => setIsInputFocused(true)}
         onBlur={() => setIsInputFocused(false)}
         value={search}
@@ -84,7 +94,7 @@ const FocusableInput = ({
 };
 
 FocusableInput.propTypes = {
-  isCaptureMode: PropTypes.bool.isRequired,
+  currentMode: PropTypes.oneOf(["capture", "search", "searchai"]).isRequired,
   isDarkMode: PropTypes.bool.isRequired,
   setSearch: PropTypes.func.isRequired,
   onKeyDown: PropTypes.func.isRequired,

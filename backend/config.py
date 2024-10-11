@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY")
     # -------------------- Logging Configuration --------------------
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # e.g., DEBUG, INFO, WARNING, ERROR
 
@@ -16,9 +17,10 @@ class Config:
     APP_PORT = int(os.getenv("APP_PORT", 8000))
 
     # -------------------- Neo4j Configuration --------------------
-    NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
+    MONGODB_USERNAME=os.getenv("MONGODB_USERNAME", "mongodb")   
+    MONGODB_PASS=os.getenv("MONGODB_PASS", "password")
+    MONGODB_URI=os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+    MONGODB_DB_NAME=os.getenv("MONGODB_DB_NAME", "notes")
 
     # -------------------- LLM Configuration --------------------
     LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini")
@@ -40,6 +42,7 @@ class Config:
     RAG_DEFAULT_MAX_TOKENS = int(os.getenv("RAG_DEFAULT_MAX_TOKENS", 2048))
     RAG_MAX_CLUSTERS = int(os.getenv("RAG_MAX_CLUSTERS", 3))
     RAG_MAX_NOTES_PER_CLUSTER = int(os.getenv("RAG_MAX_NOTES_PER_CLUSTER", 5))
+    CLUSTER_DAMPING_FACTOR = float(os.getenv("CLUSTER_DAMPING_FACTOR", 0.85))
 
     # -------------------- PageRank Configuration --------------------
     PAGERANK_ALPHA = float(os.getenv("PAGERANK_ALPHA", 0.85))

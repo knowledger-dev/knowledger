@@ -3,23 +3,33 @@ import { ToastContainer } from "react-toastify"; // Import Toastify container
 // import SearchBar from "./components/SearchBar";
 import CaptureBar from "./components/CaptureBar";
 
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+
 import Search from "./pages/Search";
 import NavBar from "./molecules/NavBar";
+import { useAuthContext } from "./hooks/useAuthContext";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 
 function App() {
+  const { user } = useAuthContext();
+
   return (
-    <main className="flex justify-center gap-0 bg-white dark:bg-black">
-      <NavBar />
-      <BrowserRouter>
+    <HashRouter>
+      <main className="flex justify-center gap-0 bg-white dark:bg-black">
+        <NavBar />
         <Routes>
           <Route
             path="/"
             element={
-              <section className="w-full h-screen flex justify-center items-center">
-                <Search />
-              </section>
-            }
+              user ? (
+                <section className="w-full h-screen flex justify-center items-center">
+                  <Search />
+                </section>
+              ) : (
+                <Navigate to="/login" />
+              )
+            } // renavigates to a route if there is no user
           />
           <Route
             path="/search-og"
@@ -32,6 +42,30 @@ function App() {
             }
           />
           <Route
+            path="/login"
+            element={
+              !user ? (
+                <section className="w-full h-screen flex justify-center items-center">
+                  <Login />
+                </section>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              !user ? (
+                <section className="w-full h-screen flex justify-center items-center">
+                  <Signup />
+                </section>
+              ) : (
+                <Navigate to="/" />
+              )
+            }
+          />
+          <Route
             path="*"
             element={
               <div className="h-screen flex justify-center items-center bg-gray-100 w-full">
@@ -40,8 +74,8 @@ function App() {
             }
           />
         </Routes>
-      </BrowserRouter>
-    </main>
+      </main>
+    </HashRouter>
   );
 }
 

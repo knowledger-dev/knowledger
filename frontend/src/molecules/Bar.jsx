@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Mousetrap from "mousetrap";
 import ButtonHalo from "../atoms/ButtonHalo";
 import {
@@ -6,35 +6,102 @@ import {
   AiOutlineSearch,
   AiOutlineUpload,
 } from "react-icons/ai";
+import { LiaSearchPlusSolid } from "react-icons/lia";
 import IconButton from "../atoms/IconButton";
-import { useState } from "react";
 import { GiBrain } from "react-icons/gi";
-
 import { marked } from "marked";
-
-import HOST from "../VARS";
-
-// Main functional component
+import * as CONSTANTS from "../BACKEND_VARS";
 import PropTypes from "prop-types";
 import FocusableInput from "../atoms/FocusableInput";
+import { useAuthContext } from "../hooks/useAuthContext";
 
 export default function Bar({
   isDarkMode,
   handleChangeData,
-  // setFocusedNode,
   isInputFocused,
   setIsInputFocused,
-  isCaptureMode,
-  setIsCaptureMode,
+  currentMode,
+  setCurrentMode,
 }) {
   const [search, setSearch] = useState("");
+  const { user } = useAuthContext();
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
-  // Function to toggle Capture Mode and save it to localStorage
+  const toggleNextMode = useCallback(() => {
+    if (currentMode === "capture") {
+      setCurrentMode("search");
+      localStorage.setItem("currentMode", "search");
+    } else if (currentMode === "search") {
+      setCurrentMode("searchai");
+      localStorage.setItem("currentMode", "searchai");
+    } else {
+      setCurrentMode("capture");
+      localStorage.setItem("currentMode", "capture");
+    }
+  }, [currentMode, setCurrentMode]);
+
+  // Function to toggle modes and save it to localStorage
   const onChangeMode = useCallback(() => {
-    const newMode = !isCaptureMode;
-    setIsCaptureMode(newMode);
-    localStorage.setItem("isCaptureMode", JSON.stringify(newMode));
-  }, [isCaptureMode, setIsCaptureMode]);
+    setIsInputFocused(false);
+    const showCommandPalette = () => {
+      const overlay = document.createElement("div");
+      overlay.style.position = "fixed";
+      overlay.style.top = 0;
+      overlay.style.left = 0;
+      overlay.style.width = "100%";
+      overlay.style.height = "100%";
+      overlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+      overlay.style.display = "flex";
+      overlay.style.justifyContent = "center";
+      overlay.style.alignItems = "center";
+      overlay.style.zIndex = 1000;
+
+      const palette = document.createElement("div");
+      palette.style.backgroundColor = isDarkMode ? "#222" : "#fff";
+      palette.style.padding = "20px";
+      palette.style.borderRadius = "8px";
+      palette.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.1)";
+      palette.innerHTML = `
+        <p>Press 'c' for Capture Mode</p>
+        <p>Press 's' for Search Mode</p>
+        <p>Press 'a' for SearchAI Mode</p>
+      `;
+
+      overlay.appendChild(palette);
+      document.body.appendChild(overlay);
+
+      const handleKeyPress = (event) => {
+        const key = event.key.toLowerCase();
+        let newMode;
+        if (key === "c") {
+          newMode = "capture";
+        } else if (key === "s") {
+          newMode = "search";
+        } else if (key === "a") {
+          newMode = "searchai";
+        } else if (event.ctrlKey && event.shiftKey && key === "m") {
+          document.body.removeChild(overlay);
+          document.removeEventListener("keydown", handleKeyPress);
+          setIsPaletteOpen(false);
+        }
+
+        if (newMode) {
+          setCurrentMode(newMode);
+          localStorage.setItem("currentMode", newMode);
+          document.body.removeChild(overlay);
+          document.removeEventListener("keydown", handleKeyPress);
+          setIsPaletteOpen(false);
+        }
+      };
+
+      document.addEventListener("keydown", handleKeyPress);
+      setIsPaletteOpen(true);
+    };
+
+    if (!isPaletteOpen) {
+      showCommandPalette();
+    }
+  }, [setCurrentMode, isPaletteOpen]);
 
   // Function to handle file upload
   const handleFileUpload = (event) => {
@@ -52,56 +119,27 @@ export default function Bar({
 
   // useEffect to bind and unbind keyboard shortcuts
   useEffect(() => {
-    Mousetrap.bindGlobal(["ctrl+shift+m", "command+shift+m"], onChangeMode);
+    Mousetrap.bindGlobal("ctrl+shift+m", onChangeMode);
 
     return () => {
-      ~Mousetrap.unbind(["ctrl+shift+m", "command+shift+m"]);
+      Mousetrap.unbind("ctrl+shift+m");
     };
-  }, [isCaptureMode, onChangeMode]);
+  }, [currentMode, onChangeMode]);
 
   const onSubmit = (event) => {
-    if (isCaptureMode) {
-      event.preventDefault();
-      console.log(search);
+    event.preventDefault();
+    console.log(`Search sent in ${currentMode} mode: `, search);
 
-      if (search === "") {
-        return;
-      }
+    if (search === "") {
+      return;
+    }
 
-      if (search == "admin bypass populate") {
-        fetch("./notes.txt")
-          .then((response) => response.text())
-          .then((text) => {
-            const lines = text.split("\n");
-            lines.forEach((line) => {
-              fetch(`${HOST}/notes`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  content: line,
-                  timestamp: new Date().toISOString(),
-                }),
-              })
-                .then((response) => response.json())
-                .then((data) => {
-                  console.log("Note saved:", data);
-                })
-                .catch((error) => {
-                  console.error("Error:", error);
-                });
-            });
-          })
-          .catch((error) => {
-            console.error("Error reading file:", error);
-          });
-        return;
-      }
-
-      fetch(`${HOST}/notes`, {
+    if (currentMode === "capture") {
+      console.log("Saving note...");
+      fetch(`${CONSTANTS.BACKEND_HOST}/notes`, {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${user.access_token}`, // sending the request with the user token
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -117,12 +155,57 @@ export default function Bar({
         .catch((error) => {
           console.error("Error:", error);
         });
-    } else {
+    } else if (currentMode === "search") {
       setIsInputFocused(false);
-      setSearch("");
-      fetch(`${HOST}/rag_query`, {
+      fetch(`${CONSTANTS.BACKEND_HOST}/query`, {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${user.access_token}`, // sending the request with the user token
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query: search,
+          limit: 10,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log("Search Basic Data: ", data);
+          setSearch("");
+
+          const nodes = data.map((parent) => ({
+            id: parent._id,
+            name: parent.content,
+          }));
+
+          const links = [];
+
+          for (let i = 0; i < nodes.length; i++) {
+            for (let j = 0; j < nodes.length; j++) {
+              if (i !== j) {
+                links.push({
+                  source: nodes[i].id,
+                  target: nodes[j].id,
+                });
+              }
+            }
+          }
+
+          console.log("Nodes: ", nodes);
+          console.log("Links: ", links);
+
+          handleChangeData({ nodes, links });
+        })
+
+        .catch((error) => {
+          console.error("Error:", error);
+        });
+    } else if (currentMode === "searchai") {
+      setIsInputFocused(false);
+      fetch(`${CONSTANTS.BACKEND_HOST}/rag_query`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${user.access_token}`, // sending the request with the user token
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -132,20 +215,25 @@ export default function Bar({
         .then((response) => response.json())
         .then((data) => {
           console.log(data);
+          setSearch("");
 
           const { answer, referenced_note_ids } = data;
 
           const fetchNotes = async (ids) => {
             const notes = await Promise.all(
               ids.map(async (id) => {
-                const response = await fetch(`${HOST}/notes/${id}`, {
-                  method: "GET",
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                });
+                const response = await fetch(
+                  `${CONSTANTS.BACKEND_HOST}/notes/${id}`,
+                  {
+                    method: "GET",
+                    headers: {
+                      Authorization: `Bearer ${user.access_token}`, // sending the request with the user token
+                      "Content-Type": "application/json",
+                    },
+                  }
+                );
                 const note = await response.json();
-                return { id: note.id, name: note.content };
+                return { id: id, name: note.content };
               })
             );
             return notes;
@@ -159,6 +247,7 @@ export default function Bar({
               /\*\*(.*?)\*\*/g,
               "<h1 style='font-size: 20px; text-align: center'>$1</h1>"
             )}</div>`;
+
             handleChangeData({
               nodes: [
                 {
@@ -194,24 +283,28 @@ export default function Bar({
             : "transition-[shadow,transform] duration-300"
         }`}
       >
-        <ButtonHalo onChangeMode={onChangeMode}>
-          {isCaptureMode ? (
+        <ButtonHalo onChangeMode={toggleNextMode}>
+          {currentMode === "capture" ? (
             <GiBrain
               size={window.innerWidth < 768 ? 20 : 25}
               className="text-white transition-transform duration-300"
             />
-          ) : (
+          ) : currentMode === "search" ? (
             <AiOutlineSearch
               size={window.innerWidth < 768 ? 20 : 25}
               className="text-white transition-transform duration-300"
             />
+          ) : (
+            <LiaSearchPlusSolid
+              size={25}
+              className="text-white transition-transform duration-300"
+            />
           )}
         </ButtonHalo>
-        {/* TODO: Currently, writing too much in the note goes past, and makes the placeholder look funky */}
         <FocusableInput
           isDarkMode={isDarkMode}
           setIsInputFocused={setIsInputFocused}
-          isCaptureMode={isCaptureMode}
+          currentMode={currentMode}
           setSearch={setSearch}
           onKeyDown={(e) => {
             if (e.key === "Enter" && isInputFocused) {
@@ -221,7 +314,7 @@ export default function Bar({
           isInputFocused={isInputFocused}
           search={search}
         />
-        {isCaptureMode ? (
+        {currentMode === "capture" ? (
           <>
             <IconButton
               onClick={() => document.getElementById("fileInput").click()}
@@ -249,7 +342,7 @@ export default function Bar({
             </IconButton>
           </>
         ) : (
-          <IconButton>
+          <IconButton onClick={onSubmit}>
             <AiOutlineArrowRight
               size={25}
               className="text-white transition-transform duration-300"
@@ -267,6 +360,6 @@ Bar.propTypes = {
   setFocusedNode: PropTypes.func.isRequired,
   isInputFocused: PropTypes.bool.isRequired,
   setIsInputFocused: PropTypes.func.isRequired,
-  setIsCaptureMode: PropTypes.func.isRequired,
-  isCaptureMode: PropTypes.bool.isRequired,
+  setCurrentMode: PropTypes.func.isRequired,
+  currentMode: PropTypes.string.isRequired,
 };
