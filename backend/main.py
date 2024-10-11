@@ -282,7 +282,7 @@ scheduler.start()
 # Schedule the compute_pagerank function to run every 30 minutes
 scheduler.add_job(
     func=compute_pagerank,
-    trigger=IntervalTrigger(minutes=30),
+    trigger=IntervalTrigger(minutes=15),
     id='compute_pagerank_job',
     name='Compute PageRank every 30 minutes',
     replace_existing=True
@@ -291,7 +291,7 @@ scheduler.add_job(
 # Schedule the perform_clustering function to run every 30 minutes
 scheduler.add_job(
     func=perform_clustering,
-    trigger=IntervalTrigger(minutes=30),
+    trigger=IntervalTrigger(minutes=15),
     id='perform_clustering_job',
     name='Perform Clustering every 30 minutes',
     replace_existing=True
@@ -313,6 +313,10 @@ async def shutdown_event():
 # -----------------------------------------------------------------------------
 # API Endpoints
 # -----------------------------------------------------------------------------
+
+@app.post("/")
+async def default_post():
+    return {"message": "Welcome to the KnowledgeRank API"}
 
 # User registration endpoint
 @app.post("/register", response_model=UserRead)
@@ -341,6 +345,20 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": user['username']}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/notes/{note_id}", response_model=NoteOutput)
+async def get_note_endpoint(
+    note_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    if not mongodb_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    note = mongodb_conn.get_note_owned_by_user(note_id, current_user.username)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+
+    return NoteOutput(**note)
 
 @app.post("/notes", response_model=NoteOutput)
 async def create_note_endpoint(
@@ -508,7 +526,7 @@ Based on this context, please provide a concise and informative answer to the fo
 
 "{user_query}"
 
-Your answer should be formatted in Markdown. For each section of your answer that is primarily based on a specific note, include a hyperlink to the note's GET endpoint in the format `[Note Content](http://localhost:8000/notes/{{note_id}})`. Ensure that the answer is well-structured and easy to read.
+Your answer should be formatted in Markdown. For each section of your answer that is primarily based on a specific note, include a hyperlink to the note's GET endpoint in the format `[Note Content](http://knowledger.onrender.com/notes/{{note_id}})`. Ensure that the answer is well-structured and easy to read.
 
 Remember to:
 
@@ -516,7 +534,7 @@ Remember to:
 - Highlight key points.
 - Embed hyperlinks to the notes for further reference.
 
-Notes GET endpoint format: `http://localhost:8000/notes/{{note_id}}`
+Notes GET endpoint format: `http://knowledger.onrender.com/notes/{{note_id}}`
 """
 
         logger.debug(f"Final Prompt Length: {len(final_prompt)}")
