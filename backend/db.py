@@ -74,6 +74,7 @@ class MongoDBConnection:
             logger.error(f"Error creating user: {e}")
             raise
 
+
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a user by their username.
