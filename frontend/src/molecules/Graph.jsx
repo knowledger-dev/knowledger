@@ -6,11 +6,11 @@ import { useEffect, useRef, useState } from "react";
 const applyGraphForces = (graphRef, linkDistance, nodeRadius) => {
   graphRef.current.d3Force("link").iterations(1).distance(linkDistance);
 
-  graphRef.current.d3Force("charge").strength(0).distanceMin(2).distanceMax(2);
+  graphRef.current.d3Force("charge").strength(0).distanceMin(4).distanceMax(4);
 
   graphRef.current.d3Force(
     "collide",
-    forceCollide(nodeRadius).strength(1).iterations(1)
+    forceCollide(nodeRadius).strength(0.5).iterations(1)
   );
   graphRef.current.d3ReheatSimulation();
 };
