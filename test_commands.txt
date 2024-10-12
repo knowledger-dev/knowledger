@@ -1,0 +1,59 @@
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Design the homepage layout for the new corporate website.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Implement responsive navigation bar using CSS and JavaScript.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Integrate user authentication system with OAuth 2.0.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Optimize website load times by minimizing HTTP requests.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Set up continuous deployment pipeline using GitHub Actions.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Analyze sales data from Q1 to identify growth opportunities.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Create visualizations for monthly revenue trends.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Develop predictive models to forecast next quarter's sales.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Clean and preprocess raw customer data for analysis.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Generate automated reports summarizing key business metrics.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Design user interface for the mobile app's onboarding process.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Implement push notifications feature using Firebase.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Develop API endpoints for user profile management.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Conduct user testing to gather feedback on app usability.\"}"
+
+curl -X POST "http://127.0.0.1:8000/notes" ^
+     -H "Content-Type: application/json" ^
+     -d "{\"content\": \"Integrate third-party payment gateway for in-app purchases.\"}"
