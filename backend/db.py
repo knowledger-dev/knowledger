@@ -119,6 +119,26 @@ class MongoDBConnection:
             logger.error(f"Error inserting note {note_id}: {e}")
             raise
     
+    def update_note(self, note_id: str, content: str, processed_content: str,
+                embedding: List[float], timestamp: datetime, summary: str):
+        try:
+            result = self.db.notes.update_one(
+                {"_id": note_id},
+                {"$set": {
+                    "content": content,
+                    "processed_content": processed_content,
+                    "embedding": embedding,
+                    "timestamp": timestamp,
+                    "summary": summary
+                }}
+            )
+            if result.matched_count == 0:
+                raise Exception("Note not found.")
+        except Exception as e:
+            logger.error(f"Error updating note {note_id}: {e}")
+            raise
+
+
     def get_note(self, note_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a single note by its ID.

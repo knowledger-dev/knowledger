@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Path
 from pydantic import BaseModel, Field
 
 from config import Config
@@ -102,7 +102,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=180))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
@@ -279,21 +279,21 @@ def perform_clustering():
 scheduler = BackgroundScheduler()
 scheduler.start()
 
-# Schedule the compute_pagerank function to run every 30 minutes
+# Schedule the compute_pagerank function to run every 10 minutes
 scheduler.add_job(
     func=compute_pagerank,
-    trigger=IntervalTrigger(minutes=15),
+    trigger=IntervalTrigger(minutes=10),
     id='compute_pagerank_job',
-    name='Compute PageRank every 15 minutes',
+    name='Compute PageRank every 10 minutes',
     replace_existing=True
 )
 
-# Schedule the perform_clustering function to run every 30 minutes
+# Schedule the perform_clustering function to run every 10 minutes
 scheduler.add_job(
     func=perform_clustering,
-    trigger=IntervalTrigger(minutes=15),
+    trigger=IntervalTrigger(minutes=10),
     id='perform_clustering_job',
-    name='Perform Clustering every 15 minutes',
+    name='Perform Clustering every 10 minutes',
     replace_existing=True
 )
 
@@ -362,6 +362,7 @@ async def get_note_endpoint(
     note_id: str,
     current_user: UserInDB = Depends(get_current_user)
 ):
+
     if not mongodb_conn.verify_connectivity():
         raise HTTPException(status_code=500, detail="Database connection error")
 
@@ -370,6 +371,75 @@ async def get_note_endpoint(
         raise HTTPException(status_code=404, detail="Note not found")
 
     return NoteOutput(**note)
+
+@app.get("/notes/", response_model=List[NoteOutput])
+async def get_all_notes_endpoint(
+    current_user: UserInDB = Depends(get_current_user)
+):
+    if not mongodb_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    notes = mongodb_conn.get_all_notes_owned_by_user(current_user.username)
+    if not notes:
+        raise HTTPException(status_code=404, detail="No notes found")
+
+    return [NoteOutput(**note) for note in notes]
+
+@app.put("/notes/{note_id}", response_model=NoteOutput)
+async def update_note_endpoint(
+    note_input: NoteInput,
+    background_tasks: BackgroundTasks,
+    current_user: UserInDB = Depends(get_current_user),
+    note_id: str = Path(..., description="The ID of the note to update")
+):
+    if not mongodb_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    # Verify that the note exists and is owned by the current user
+    existing_note = mongodb_conn.get_note_owned_by_user(note_id, current_user.username)
+    if not existing_note:
+        raise HTTPException(status_code=404, detail="Note not found or access denied")
+
+    try:
+        # Process the updated content
+        processed_content = preprocess_for_embedding(note_input.content)
+        model = get_sentence_transformer()
+        embedding = model.encode([processed_content], show_progress_bar=False)[0].tolist()
+
+        # Generate new summary using LLM
+        llm_client = get_llm_client()
+        summary_prompt = Config.NOTE_SUMMARY_PROMPT_TEMPLATE.format(content=processed_content)
+        summary = await llm_client.generate_content(summary_prompt)
+
+        # Update the note in MongoDB
+        mongodb_conn.update_note(
+            note_id=note_id,
+            content=note_input.content,
+            processed_content=processed_content,
+            embedding=embedding,
+            timestamp=note_input.timestamp,
+            summary=summary
+        )
+
+        # Update relationships and PageRank in the background
+        background_tasks.add_task(
+            mongodb_conn.update_relationships,
+            note_id,
+            Config.SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS
+        )
+        background_tasks.add_task(compute_pagerank)
+        background_tasks.add_task(perform_clustering)
+
+        # Retrieve the updated note to include all fields
+        note = mongodb_conn.get_note(note_id)
+        if not note:
+            raise HTTPException(status_code=500, detail="Failed to retrieve the updated note.")
+        note_output = NoteOutput(**note)
+        return note_output
+
+    except Exception as e:
+        logger.error(f"Error updating note: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/notes", response_model=NoteOutput)
 async def create_note_endpoint(
