@@ -27,7 +27,8 @@
     "react-router-dom": "^6.26.2",
     "react-toastify": "^8.0.0",
     "react-markdown": "^8.0.3",
-    "turndown": "^7.1.1"
+    "turndown": "^7.1.1",
+    "react-simplemde-editor": "^5.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",

@@ -5,6 +5,19 @@
   text-align: center;
 }
 
+/* Add this to your global CSS file or Tailwind configuration */
+@keyframes flyIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
 .logo {
   height: 6em;
   padding: 1.5em;

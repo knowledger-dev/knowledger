@@ -403,6 +403,18 @@ body[data-theme="light"] .info-section h2 {
   background: none; /* Ensure transparent background */
 }
 
+@keyframes flyIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
 .info-item:focus {
   outline: 2px solid var(--accent-purple);
   outline-offset: 2px;
@@ -423,6 +435,7 @@ body[data-theme="light"] .info-item:hover {
   flex-shrink: 0;
   color: var(--highlight-text-color);
 }
+
 
 /* Label Styling within Info Items */
 .info-item .item-label {
