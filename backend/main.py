@@ -626,7 +626,7 @@ async def test_model():
         logger.error(f"Model test failed: {e}")
         raise HTTPException(status_code=500, detail="SentenceTransformer model test failed.")
 
-@app.get("/")
+@app.head("/")
 async def root():
     return {"message": "Hello from FastAPI!"}
 
@@ -636,4 +636,4 @@ async def root():
 
 import uvicorn
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000)
