@@ -1,4 +1,5 @@
 import { useRef, useEffect } from "react";
+const { ipcRenderer } = window.require("electron");
 import PropTypes from "prop-types";
 
 const FocusableInput = ({
@@ -11,29 +12,24 @@ const FocusableInput = ({
   search,
 }) => {
   const inputRef = useRef(null);
-  const isElectron = typeof window !== "undefined" && window.require;
 
   useEffect(() => {
-    if (isElectron) {
-      const { ipcRenderer } = window.require("electron");
-
-      // Listen for the "focus-input" event from the Electron main process
-      ipcRenderer.on("focus-input", () => {
-        if (inputRef.current) {
-          if (document.activeElement === inputRef.current) {
-            inputRef.current.blur(); // Unfocus the input if it is already focused
-          } else {
-            inputRef.current.focus(); // Focus the input when the event is received
-          }
+    // Listen for the "focus-input" event from the Electron main process
+    ipcRenderer.on("focus-input", () => {
+      if (inputRef.current) {
+        if (document.activeElement === inputRef.current) {
+          inputRef.current.blur(); // Unfocus the input if it is already focused
+        } else {
+          inputRef.current.focus(); // Focus the input when the event is received
         }
-      });
+      }
+    });
 
-      // Cleanup the event listener when the component unmounts
-      return () => {
-        ipcRenderer.removeAllListeners("focus-input");
-      };
-    }
-  }, [isElectron]);
+    // Cleanup the event listener when the component unmounts
+    return () => {
+      ipcRenderer.removeAllListeners("focus-input");
+    };
+  }, []);
 
   useEffect(() => {
     if (isInputFocused) {

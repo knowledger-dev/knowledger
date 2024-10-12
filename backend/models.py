@@ -51,6 +51,10 @@ class NoteInput(BaseModel):
     content: str
     timestamp: datetime
 
+class NoteUpdateInput(BaseModel):
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
 # Model for note output
 class NoteOutput(BaseModel):
     id: str = Field(..., alias='_id')  # Map MongoDB's '_id' to 'id'

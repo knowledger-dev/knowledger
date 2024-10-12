@@ -147,27 +147,9 @@ export default function Search() {
         )}
       </IconButton>
       <section
-        className={`font-inter font-semibold w-full fixed z-10 transition-transform duration-500 ${
-          data.nodes.length !== 0
-            ? "bottom-[5%]"
-            : "top-1/2 transform -translate-y-1/2"
-        }`}
+        className={`font-inter font-semibold w-full fixed z-10 transition-transform duration-500`}
       >
         <div className="flex flex-col justify-center items-center">
-          <h1
-            className={`text-5xl p-10 text-black dark:text-white text-center max-md:text-xl transition-opacity duration-300 ${
-              isInputFocused ? "opacity-100" : "opacity-30"
-            }`}
-          >
-            {currentMode === "capture"
-              ? "Capture your thoughts"
-              : currentMode === "search"
-              ? "Search your notes"
-              : currentMode === "searchai"
-              ? "Ask your agent"
-              : "Mode is currently undetermined"}
-          </h1>
-
           <Bar
             currentMode={currentMode}
             setCurrentMode={setCurrentMode}

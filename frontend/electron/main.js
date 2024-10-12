@@ -13,6 +13,7 @@ const createWindow = () => {
       contextIsolation: false, // Ensure this matches your app setup
       enableRemoteModule: true, // Ensure this matches your app setup
     },
+    autoHideMenuBar: true,
   });
 
   // Load your index.html file which will contain the React app.
