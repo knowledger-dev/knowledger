@@ -43,17 +43,27 @@ export default function Bar({
 
   // IPC Listener for 'focus-input' event, due to focusable input not being rendered yet
   useEffect(() => {
-    let ipcRenderer;
-    if (window.require) {
-      ipcRenderer = window.require("electron").ipcRenderer;
-    } else {
-      return;
-    }
-
     const handleFocusInput = () => {
       setSearch("");
       setIsBarOpen(true); // upon rendering, input will self focus
     };
+
+    let ipcRenderer;
+    if (window.require) {
+      ipcRenderer = window.require("electron").ipcRenderer;
+    } else {
+      const handleKeyDown = (event) => {
+        if (event.ctrlKey && event.shiftKey && event.code === "Space") {
+          handleFocusInput();
+        }
+      };
+
+      document.addEventListener("keydown", handleKeyDown);
+
+      return () => {
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    }
 
     ipcRenderer.on("focus-input", handleFocusInput);
 
