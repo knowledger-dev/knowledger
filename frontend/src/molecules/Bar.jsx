@@ -46,6 +46,8 @@ export default function Bar({
     let ipcRenderer;
     if (window.require) {
       ipcRenderer = window.require("electron").ipcRenderer;
+    } else {
+      return;
     }
 
     const handleFocusInput = () => {
