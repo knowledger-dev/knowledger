@@ -21,8 +21,8 @@ const createWindow = () => {
   // mainWindow.loadFile(path.join(__dirname, "dist/index.html"));
   mainWindow.loadURL(CONSTANTS.FRONTEND_HOST);
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Open the DevTools. Turn off on deployment!!
+  // mainWindow.webContents.openDevTools();
 };
 
 app.whenReady().then(() => {

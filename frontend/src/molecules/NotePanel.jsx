@@ -61,7 +61,7 @@ export default function NotePanel({
               </Tab>
             ))}
           </TabList>
-          <div className="p-2">
+          <div className="p-2 dark:text-white text-black">
             {openNotes.map((note) => (
               <TabPanel key={note.id}>
                 {note.id === "central" ? (
