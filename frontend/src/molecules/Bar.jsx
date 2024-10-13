@@ -43,7 +43,10 @@ export default function Bar({
 
   // IPC Listener for 'focus-input' event, due to focusable input not being rendered yet
   useEffect(() => {
-    const ipcRenderer = window.require("electron").ipcRenderer;
+    let ipcRenderer;
+    if (window.require) {
+      ipcRenderer = window.require("electron").ipcRenderer;
+    }
 
     const handleFocusInput = () => {
       setSearch("");
