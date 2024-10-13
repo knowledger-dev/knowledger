@@ -31,6 +31,27 @@ const FocusableInput = ({
       return () => {
         ipcRenderer.removeAllListeners("focus-input");
       };
+    } else {
+      const handleKeyDown = (event) => {
+        // Check for a specific key combination, e.g., Ctrl+Shift+F
+        if (event.ctrlKey && event.shiftKey && event.key === "F") {
+          if (inputRef.current) {
+            if (document.activeElement === inputRef.current) {
+              inputRef.current.blur(); // Unfocus the input if it is already focused
+            } else {
+              inputRef.current.focus(); // Focus the input when the key combination is pressed
+            }
+          }
+        }
+      };
+
+      // Add the event listener for keydown events
+      window.addEventListener("keydown", handleKeyDown);
+
+      // Cleanup the event listener when the component unmounts
+      return () => {
+        window.removeEventListener("keydown", handleKeyDown);
+      };
     }
   }, [isElectron]);
 
