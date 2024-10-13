@@ -1,7 +1,8 @@
 import { ForceGraph2D } from "react-force-graph";
 import { forceCollide } from "d3-force-3d";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { handleClickOutside } from "../helpers/BarFunctions";
 
 const applyGraphForces = (graphRef, linkDistance, nodeRadius) => {
   graphRef.current.d3Force("link").iterations(1).distance(linkDistance);
@@ -23,8 +24,12 @@ export default function Graph({
   data,
   isDarkMode,
   focusedNode,
-  setFocusedNode,
+  // setFocusedNode,
   setInfo,
+  setIsPaletteOpen,
+  setIsBarOpen,
+  setIsInputFocused,
+  isPaneVisible,
 }) {
   const graphRef = useRef(null);
   const [dimensions, setDimensions] = useState({
@@ -32,21 +37,29 @@ export default function Graph({
     height: window.innerHeight,
   });
 
-  const handleResize = () => {
+  const handleResize = useCallback(() => {
     setDimensions({
       width: window.innerWidth,
       height: window.innerHeight,
     });
     if (graphRef.current) {
-      const centerY = window.innerHeight / (data.nodes.length > 50 ? 2 : 4);
       graphRef.current.width = window.innerWidth;
       const zoomFactor = data.nodes.length > 50 ? 0.5 : 1;
       graphRef.current.zoom(zoomFactor, 500);
       setTimeout(() => {
-        graphRef.current.centerAt(0, centerY, 2000);
-      }, 500);
+        if (isPaneVisible) {
+          const offsetX = window.innerWidth * 0.2; // Adjust the value as needed
+          graphRef.current.centerAt(offsetX, 0, 500);
+        } else {
+          graphRef.current.centerAt(0, 0, 500);
+        }
+      }, 0);
     }
-  };
+  }, [data.nodes.length, isPaneVisible]);
+
+  useEffect(() => {
+    handleResize();
+  }, [isPaneVisible, handleResize]);
 
   useEffect(() => {
     if (graphRef.current && data) {
@@ -58,21 +71,21 @@ export default function Graph({
     }
   }, [data, dimensions]);
 
-  useEffect(() => {
-    if (focusedNode) {
-      const fNode = data.nodes.find((n) => n.name === focusedNode);
-      if (fNode) {
-        const padding = Math.min(window.innerWidth, window.innerHeight) * 0.2; // Padding, arbitrary, can be dependent on node label size later
-        graphRef.current.zoomToFit(
-          2000,
-          padding,
-          (node) => node.name === fNode.name
-        );
-        graphRef.current.centerAt(fNode.x, fNode.y + 10, 2000); // Centering, arbitrary, adding so that it is not blocked by search bar
-      }
-      setFocusedNode(null);
-    }
-  }, [focusedNode, data, setFocusedNode]);
+  // useEffect(() => {
+  //   if (focusedNode) {
+  //     const fNode = data.nodes.find((n) => n.name === focusedNode);
+  //     if (fNode) {
+  //       const padding = Math.min(window.innerWidth, window.innerHeight) * 0.2; // Padding, arbitrary, can be dependent on node label size later
+  //       graphRef.current.zoomToFit(
+  //         2000,
+  //         padding,
+  //         (node) => node.name === fNode.name
+  //       );
+  //       graphRef.current.centerAt(fNode.x, fNode.y + 10, 2000); // Centering, arbitrary, adding so that it is not blocked by search bar
+  //     }
+  //     setFocusedNode(null);
+  //   }
+  // }, [focusedNode, data, setFocusedNode]);
 
   useEffect(() => {
     window.addEventListener("resize", handleResize);
@@ -83,7 +96,7 @@ export default function Graph({
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("DOMContentLoaded", handleResize);
     };
-  }, [data]);
+  }, [data, handleResize]);
 
   return (
     <section className="font-inter font-semibold w-full fixed top-0">
@@ -96,6 +109,14 @@ export default function Graph({
           onNodeClick={(node) => {
             console.log(`Node clicked: ${node.name}`);
             setInfo(node.name); // can change later to include all data
+          }}
+          onBackgroundClick={(e) => {
+            handleClickOutside(
+              e,
+              setIsPaletteOpen,
+              setIsInputFocused,
+              setIsBarOpen
+            );
           }}
           backgroundColor={
             isDarkMode ? "rgba(0, 0, 0, 1)" : "rgba(255, 255, 255, 1)"
@@ -141,4 +162,8 @@ Graph.propTypes = {
   focusedNode: PropTypes.string,
   setFocusedNode: PropTypes.func.isRequired,
   setInfo: PropTypes.func.isRequired,
+  setIsPaletteOpen: PropTypes.func.isRequired,
+  setIsBarOpen: PropTypes.func.isRequired,
+  setIsInputFocused: PropTypes.func.isRequired,
+  isPaneVisible: PropTypes.bool.isRequired,
 };
