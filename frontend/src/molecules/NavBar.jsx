@@ -21,7 +21,7 @@ export default function NavBar() {
   };
 
   return (
-    <nav className="flex flex-col justify-start items-center bg-purple-900 w-max p-6 font-inter font-bold z-10 gap-6">
+    <nav className="flex flex-col justify-start items-center bg-purple-900 w-max p-6 font-inter font-bold z-50 gap-6">
       <button
         onClick={() => handleButtonClick("/")}
         className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"

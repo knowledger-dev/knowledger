@@ -11,8 +11,7 @@ export function handleClickOutside(
   setIsBarOpen
 ) {
   if (
-    !e.target.closest("#chatbar-section") && // Ensure clicks on chatbar don't close the palette
-    !e.target.closest("#command-palette") // Ensure clicks on command palette don't close the palette
+    !e.target.closest("#bar") // Ensure clicks on chatbar don't close the palette
   ) {
     CloseBar(setIsPaletteOpen, setIsInputFocused, setIsBarOpen);
   }

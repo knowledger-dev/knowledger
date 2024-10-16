@@ -15,7 +15,7 @@ import PropTypes from "prop-types";
 import FocusableInput from "../atoms/FocusableInput";
 import { toast } from "react-toastify";
 import { useAuthContext } from "../hooks/useAuthContext";
-import { CloseBar } from "../helpers/BarFunctions";
+import { CloseBar } from "../utils/BarFunctions";
 
 const commands = [
   { id: "capture", label: "/Capture" },
@@ -97,6 +97,44 @@ export default function Bar({
     ]
   );
 
+  // useEffect(() => {
+  //   fetch(`${CONSTANTS.BACKEND_HOST}/notes`, {
+  //     headers: {
+  //       Authorization: `Bearer ${user.access_token}`, // sending the request with the user token
+  //       "Content-Type": "application/json",
+  //     },
+  //   })
+  //     .then((response) => response.json())
+  //     .then((data) => {
+  //       console.log("Notes Data: ", data);
+
+  //       const nodes = data.map((note) => ({
+  //         id: note._id,
+  //         name: note.content,
+  //       }));
+
+  //       const links = [];
+
+  //       for (let i = 0; i < nodes.length; i++) {
+  //         for (let j = 0; j < nodes.length; j++) {
+  //           if (i !== j) {
+  //             links.push({
+  //               source: nodes[i].id,
+  //               target: nodes[j].id,
+  //             });
+  //           }
+  //         }
+  //       }
+
+  //       console.log("Nodes: ", nodes);
+  //       console.log("Links: ", links);
+  //       handleChangeData({ nodes, links });
+  //     })
+  //     .catch((error) => {
+  //       console.error("Error:", error);
+  //     });
+  // }, []);
+
   // Function to handle form submission
   const onSubmit = useCallback(
     (event) => {
@@ -116,27 +154,6 @@ export default function Bar({
       if (currentMode === "capture") {
         toast.info("Saving note...", { autoClose: 9000 });
         console.log("Saving note...");
-        fetch(`${CONSTANTS.BACKEND_HOST}/notes`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${user.access_token}`, // sending the request with the user token
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            content: search,
-            timestamp: new Date().toISOString(),
-          }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            toast.success("Note saved successfully!");
-            console.log("Note saved:", data);
-            setSearch("");
-          })
-          .catch((error) => {
-            console.error("Error:", error);
-            toast.error("Failed to save note.", { autoClose: 5000 });
-          });
       } else if (currentMode === "search") {
         toast.info("Searching...", { autoClose: 7000 });
         setIsInputFocused(false);
@@ -413,113 +430,113 @@ export default function Bar({
   };
 
   return (
-    <>
-      {/* Chatbar Section */}
-      {isBarOpen && (
-        <section
-          id="chatbar-section"
-          className={`relative max-xl:w-[80%] w-[40%] flex justify-center py-2 px-4 bg-slate-300 dark:bg-gray-800 rounded-3xl gap-2 transition-[shadow,transform] duration-300 ${
-            isInputFocused
-              ? "shadow-lg shadow-purple-500/50 transform -translate-y-2"
-              : ""
-          }`}
-        >
-          {/* Mode Switcher Button */}
-          <ButtonHalo onChangeMode={toggleNextMode}>
-            {currentMode === "capture" ? (
-              <GiBrain
-                size={window.innerWidth < 768 ? 20 : 25}
-                className="text-white transition-transform duration-300"
-              />
-            ) : currentMode === "search" ? (
-              <AiOutlineSearch
-                size={window.innerWidth < 768 ? 20 : 25}
-                className="text-white transition-transform duration-300"
-              />
-            ) : (
-              <LiaSearchPlusSolid
-                size={25}
-                className="text-white transition-transform duration-300"
-              />
-            )}
-          </ButtonHalo>
-
-          {/* Input Field */}
-          <FocusableInput
-            isDarkMode={isDarkMode}
-            setIsInputFocused={setIsInputFocused}
-            currentMode={currentMode}
-            setSearch={setSearch}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && isInputFocused && !isPaletteOpen) {
-                onSubmit(e);
-              }
-            }}
-            isInputFocused={isInputFocused}
-            search={search}
-          />
-
-          {/* Conditional Icons based on Mode */}
-          {currentMode === "capture" ? (
-            <>
-              <IconButton
-                onClick={() => document.getElementById("fileInput").click()}
-              >
-                <AiOutlineUpload
+    <section className="font-inter font-semibold fixed z-10 w-full transition-transform duration-500">
+      <div className="flex flex-col justify-center items-center z-10" id="bar">
+        {/* Chatbar Section */}
+        {isBarOpen && (
+          <section
+            className={`relative max-xl:w-[80%] w-[40%] flex justify-center py-2 px-4 bg-slate-300 dark:bg-gray-800 rounded-3xl gap-2 transition-[shadow,transform] duration-300 ${
+              isInputFocused
+                ? "shadow-lg shadow-purple-500/50 transform -translate-y-2"
+                : ""
+            }`}
+          >
+            {/* Mode Switcher Button */}
+            <ButtonHalo onChangeMode={toggleNextMode}>
+              {currentMode === "capture" ? (
+                <GiBrain
+                  size={window.innerWidth < 768 ? 20 : 25}
+                  className="text-white transition-transform duration-300"
+                />
+              ) : currentMode === "search" ? (
+                <AiOutlineSearch
+                  size={window.innerWidth < 768 ? 20 : 25}
+                  className="text-white transition-transform duration-300"
+                />
+              ) : (
+                <LiaSearchPlusSolid
                   size={25}
                   className="text-white transition-transform duration-300"
                 />
-              </IconButton>
-              <input
-                type="file"
-                id="fileInput"
-                style={{ display: "none" }}
-                onChange={handleFileUpload}
-              />
+              )}
+            </ButtonHalo>
+
+            {/* Input Field */}
+            <FocusableInput
+              isDarkMode={isDarkMode}
+              setIsInputFocused={setIsInputFocused}
+              currentMode={currentMode}
+              setSearch={setSearch}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && isInputFocused && !isPaletteOpen) {
+                  onSubmit(e);
+                }
+              }}
+              isInputFocused={isInputFocused}
+              search={search}
+            />
+
+            {/* Conditional Icons based on Mode */}
+            {currentMode === "capture" ? (
+              <>
+                <IconButton
+                  onClick={() => document.getElementById("fileInput").click()}
+                >
+                  <AiOutlineUpload
+                    size={25}
+                    className="text-white transition-transform duration-300"
+                  />
+                </IconButton>
+                <input
+                  type="file"
+                  id="fileInput"
+                  style={{ display: "none" }}
+                  onChange={handleFileUpload}
+                />
+                <IconButton onClick={onSubmit}>
+                  <AiOutlineArrowRight
+                    size={25}
+                    className="text-white transition-transform duration-300"
+                  />
+                </IconButton>
+              </>
+            ) : (
               <IconButton onClick={onSubmit}>
                 <AiOutlineArrowRight
                   size={25}
                   className="text-white transition-transform duration-300"
                 />
               </IconButton>
-            </>
-          ) : (
-            <IconButton onClick={onSubmit}>
-              <AiOutlineArrowRight
-                size={25}
-                className="text-white transition-transform duration-300"
-              />
-            </IconButton>
-          )}
-        </section>
-      )}
+            )}
+          </section>
+        )}
 
-      {/* Command Palette Dialog */}
-      {isPaletteOpen && (
-        <div
-          id="command-palette"
-          className={`absolute top-full mt-2 w-[40%] bg-slate-300 dark:bg-gray-800 rounded-2xl shadow-lg p-4 transition-opacity duration-300`}
-        >
-          <ul className="max-h-60 overflow-y-auto">
-            {filteredCommands.map((cmd, index) => (
-              <li
-                key={cmd.id}
-                className={`p-2 cursor-pointer rounded ${
-                  highlightedIndex === index
-                    ? "bg-gray-200 dark:bg-gray-700"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-600"
-                }`}
-                onMouseEnter={() => setHighlightedIndex(index)}
-                onMouseLeave={() => setHighlightedIndex(-1)}
-                onClick={() => executeCommand(cmd.id)}
-              >
-                {cmd.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
+        {/* Command Palette Dialog */}
+        {isPaletteOpen && (
+          <div
+            className={`absolute top-full mt-2 w-[40%] bg-slate-300 dark:bg-gray-800 rounded-2xl shadow-lg p-4 transition-opacity duration-300`}
+          >
+            <ul className="max-h-60 overflow-y-auto">
+              {filteredCommands.map((cmd, index) => (
+                <li
+                  key={cmd.id}
+                  className={`p-2 cursor-pointer rounded ${
+                    highlightedIndex === index
+                      ? "bg-gray-200 dark:bg-gray-700"
+                      : "hover:bg-gray-100 dark:hover:bg-gray-600"
+                  }`}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  onMouseLeave={() => setHighlightedIndex(-1)}
+                  onClick={() => executeCommand(cmd.id)}
+                >
+                  {cmd.label}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

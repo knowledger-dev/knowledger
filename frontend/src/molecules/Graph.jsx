@@ -2,7 +2,7 @@ import { ForceGraph2D } from "react-force-graph";
 import { forceCollide } from "d3-force-3d";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { handleClickOutside } from "../helpers/BarFunctions";
+import { handleClickOutside } from "../utils/BarFunctions";
 
 const applyGraphForces = (graphRef, linkDistance, nodeRadius) => {
   graphRef.current.d3Force("link").iterations(1).distance(linkDistance);

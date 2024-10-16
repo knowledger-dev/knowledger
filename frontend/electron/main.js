@@ -19,10 +19,10 @@ const createWindow = () => {
   // Load your index.html file which will contain the React app.
   // In production, you should load the built index.html file (from /build or /dist)
   // mainWindow.loadFile(path.join(__dirname, "dist/index.html"));
-  mainWindow.loadURL(CONSTANTS.FRONTEND_HOST);
+  mainWindow.loadURL(`${CONSTANTS.FRONTEND_HOST}#/`);
 
   // Open the DevTools. Turn off on deployment!!
-  // mainWindow.webContents.openDevTools();
+  mainWindow.webContents.openDevTools();
 };
 
 app.whenReady().then(() => {
