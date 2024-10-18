@@ -13,11 +13,11 @@ export default function IconButton({ children, onClick, className }) {
     <div className={`flex justify-center items-center ${className}`}>
       <button
         onClick={handleClick}
-        className={`relative bg-purple-900 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-full transform transition-transform duration-200 hover:-translate-y-0.5 max-md:text-sm`}
+        className={`relative bg-russianviolet hover:bg-russianviolet/60 text-white font-bold py-2 outline-lavender px-4 rounded-full transform transition-transform duration-200 hover:-translate-y-0.5 max-md:text-sm `}
       >
         {children}
         <span
-          className={`absolute -inset-0.5 rounded-full ring-4 ring-purple-700 transition-opacity duration-300 ${
+          className={`absolute -inset-0.5 rounded-full ring-4 ring-lavender transition-opacity duration-200 ${
             isClicked ? "opacity-100" : "opacity-0"
           }`}
         ></span>

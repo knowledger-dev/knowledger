@@ -125,28 +125,28 @@ export default function Graph({
           linkColor={(link) => {
             if (link.source.val > 4 && link.target.val > 9) {
               return isDarkMode
-                ? "rgba(255, 87, 51, 0.8)"
-                : "rgba(255, 87, 51, 0.8)";
+                ? "rgba(98, 27, 0, 0.8)"
+                : "rgba(255, 102, 99, 0.8)";
             } else if (link.source.val > 6 && link.target.val > 4) {
               return isDarkMode
-                ? "rgba(51, 255, 189, 0.8)"
-                : "rgba(51, 255, 189, 0.8)";
+                ? "rgba(98, 27, 0, 0.8)"
+                : "rgba(255, 102, 99, 0.8)";
             } else {
               return isDarkMode
-                ? "rgba(51, 85, 255, 0.8)"
-                : "rgba(51, 85, 255, 0.8)";
+                ? "rgba(98, 27, 0, 0.8)"
+                : "rgba(255, 102, 99, 0.8)";
             }
           }}
           nodeColor={
             isDarkMode
               ? (node) =>
                   node.name === focusedNode
-                    ? "rgba(80, 10, 10, 1)"
-                    : "rgba(80, 10, 10, 1)"
+                    ? "rgba(197, 137, 232, 1)"
+                    : "rgba(197, 137, 232, 1)"
               : (node) =>
                   node.name === focusedNode
-                    ? "rgba(80, 10, 10, 1)"
-                    : "rgba(80, 10, 10, 1)"
+                    ? "rgba(197, 137, 232, 1)"
+                    : "rgba(197, 137, 232, 1)"
           }
           linkDirectionalArrowLength={3}
           linkDirectionalArrowRelPos={1}

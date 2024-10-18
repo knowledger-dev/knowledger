@@ -19,12 +19,15 @@ export default function CaptureTab() {
         <textarea
           id="capture-tab"
           placeholder="Capture your thoughts here..."
-          className="p-4 dark:bg-black dark:text-white text-black text-lg w-full h-full focus:outline-none"
+          className="p-4 dark:bg-black dark:text-white text-black text-lg w-full m-6 focus:outline-none"
           onChange={(e) => setSearch(e.target.value)}
           value={search}
         ></textarea>
 
-        <button type="submit" className="absolute right-0 bottom-0 p-4">
+        <button
+          type="submit"
+          className="absolute right-0 bottom-0 p-4 dark:text-white text-black"
+        >
           Add Note
         </button>
       </form>

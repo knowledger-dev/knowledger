@@ -62,7 +62,7 @@ export default function GraphPage({
     <>
       <IconButton
         onClick={handleNavigateToCapture}
-        className="p-3 z-50 absolute top-0 left-0"
+        className="p-3 z-50 absolute top-0"
       >
         Add Note
       </IconButton>

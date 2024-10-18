@@ -435,9 +435,9 @@ export default function Bar({
         {/* Chatbar Section */}
         {isBarOpen && (
           <section
-            className={`relative max-xl:w-[80%] w-[40%] flex justify-center py-2 px-4 bg-slate-300 dark:bg-gray-800 rounded-3xl gap-2 transition-[shadow,transform] duration-300 ${
+            className={`relative max-xl:w-[80%] w-[40%] flex justify-center py-2 px-4 bg-slate-300 dark:bg-gray-800 rounded-3xl gap-2 transition-[transform,shadow] duration-300 ${
               isInputFocused
-                ? "shadow-lg shadow-purple-500/50 transform -translate-y-2"
+                ? " transform -translate-y-1 ring-4 ring-lavender ring-offset-4 dark:ring-offset-black"
                 : ""
             }`}
           >
@@ -510,11 +510,10 @@ export default function Bar({
             )}
           </section>
         )}
-
         {/* Command Palette Dialog */}
         {isPaletteOpen && (
           <div
-            className={`absolute top-full mt-2 w-[40%] bg-slate-300 dark:bg-gray-800 rounded-2xl shadow-lg p-4 transition-opacity duration-300`}
+            className={`absolute top-full mt-2 w-[40%] bg-slate-300/60 dark:text-white text-black dark:bg-gray-800/60 rounded-2xl shadow-lg p-4 transition-opacity duration-300`}
           >
             <ul className="max-h-60 overflow-y-auto">
               {filteredCommands.map((cmd, index) => (

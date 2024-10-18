@@ -83,6 +83,7 @@ function App() {
     const handleClickOutside = (event) => {
       if (isBarOpen && !event.target.closest("#bar")) {
         setIsBarOpen(false);
+        setIsPaletteOpen(false);
       }
     };
 
@@ -108,7 +109,7 @@ function App() {
   return (
     <HashRouter>
       <main className="flex justify-between gap-0 bg-white dark:bg-black">
-        <NavBar />
+        {user && <NavBar />}
         <IconButton
           onClick={handleClick}
           className="absolute right-0 p-5 top-0 z-50"
@@ -124,6 +125,7 @@ function App() {
           <Route
             path="/capture"
             element={
+              // Need to fix the bar, since it is being repeated in /capture and /
               user ? (
                 <section className="w-full h-screen flex flex-col justify-center items-center relative">
                   <Bar
