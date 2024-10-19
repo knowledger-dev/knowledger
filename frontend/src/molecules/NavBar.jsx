@@ -2,54 +2,59 @@ import { useAuthContext } from "../hooks/useAuthContext";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLogout } from "../hooks/useLogout";
+import { AiOutlineMenu, AiOutlineClose } from "react-icons/ai";
 
 export default function NavBar() {
   const { user } = useAuthContext();
-  const [isLogin, setIsLogin] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   const { logout } = useLogout();
-
   const navigate = useNavigate();
 
   const handleButtonClick = (path) => {
     navigate(path); // Programmatically navigate to another route
   };
 
-  const toggleLoginSignup = () => {
-    setIsLogin(!isLogin);
-    handleButtonClick(isLogin ? "/signup" : "/login");
+  const toggleCollapse = () => {
+    setIsCollapsed(!isCollapsed);
   };
 
   return (
-    <nav className="flex flex-col justify-start items-center bg-purple-900 w-max p-6 font-inter font-bold z-10 gap-6">
+    <>
       <button
-        onClick={() => handleButtonClick("/")}
-        className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
+        onClick={toggleCollapse}
+        className=" z-50 outline-lavender p-5  no-underline text-center rounded-md cursor-pointer fixed top-0 left-0"
       >
-        Agent
+        {isCollapsed ? (
+          <div className="text-black dark:text-white">
+            <AiOutlineMenu size={25} />
+          </div>
+        ) : (
+          <div className="text-white">
+            <AiOutlineClose size={25} />
+          </div>
+        )}
       </button>
-      {!user && (
-        <button
-          onClick={toggleLoginSignup}
-          className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
-        >
-          {isLogin ? "Signup instead" : "Login instead"}
-        </button>
-      )}
-      {user && (
-        <button
-          onClick={logout}
-          className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer text-center rounded-md hover:bg-purple-400/55 p-4"
-        >
-          Logout
-        </button>
-      )}
-      {/* <button
-        onClick={() => handleButtonClick("/settings")}
-        className="text-white py-2 no-underline hover:text-gray-300 active:text-gray-800 cursor-pointer"
+      <nav
+        className={`fixed bg-russianviolet flex flex-col font-inter font-bold gap-6 justify-start items-center top-0 left-0 h-full z-30 transition-transform duration-300 w-[250px] ${
+          isCollapsed ? "-translate-x-full" : "translate-x-0"
+        }`}
       >
-        <AiOutlineSetting size={25} />
-      </button> */}
-    </nav>
+        <button
+          onClick={() => handleButtonClick("/")}
+          className="dark:text-white  hover:text-gray-300 active:text-gray-400  text-white py-6 no-underline  cursor-pointer text-center rounded-md p-4"
+        >
+          Agent
+        </button>
+        {user && (
+          <button
+            onClick={logout}
+            className="dark:text-white  hover:text-gray-300 active:text-gray-400  text-white py-6 no-underline  cursor-pointer text-center rounded-md p-4"
+          >
+            Logout
+          </button>
+        )}
+      </nav>
+    </>
   );
 }
