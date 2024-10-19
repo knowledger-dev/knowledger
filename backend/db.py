@@ -119,26 +119,6 @@ class MongoDBConnection:
             logger.error(f"Error inserting note {note_id}: {e}")
             raise
     
-    def update_note(self, note_id: str, content: str, processed_content: str,
-                embedding: List[float], timestamp: datetime, summary: str):
-        try:
-            result = self.db.notes.update_one(
-                {"_id": note_id},
-                {"$set": {
-                    "content": content,
-                    "processed_content": processed_content,
-                    "embedding": embedding,
-                    "timestamp": timestamp,
-                    "summary": summary
-                }}
-            )
-            if result.matched_count == 0:
-                raise Exception("Note not found.")
-        except Exception as e:
-            logger.error(f"Error updating note {note_id}: {e}")
-            raise
-
-
     def get_note(self, note_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a single note by its ID.
@@ -162,6 +142,99 @@ class MongoDBConnection:
             logger.error(f"Error retrieving notes {note_ids}: {e}")
             raise
     
+    def update_note(self, note_id: str, content: str, processed_content: str,
+                    embedding: List[float], timestamp: datetime, summary: str):
+        """
+        Update the details of an existing note.
+        """
+        try:
+            result = self.notes.update_one(
+                {"_id": note_id},
+                {"$set": {
+                    "content": content,
+                    "processed_content": processed_content,
+                    "embedding": embedding,
+                    "timestamp": timestamp,
+                    "summary": summary
+                }}
+            )
+            if result.matched_count == 0:
+                raise Exception("Note not found.")
+            logger.info(f"Note {note_id} updated successfully.")
+        except Exception as e:
+            logger.error(f"Error updating note {note_id}: {e}")
+            raise
+
+    def delete_note(self, note_id: str):
+        """
+        Delete a note by its ID.
+        """
+        try:
+            result = self.notes.delete_one({"_id": note_id})
+            if result.deleted_count == 0:
+                raise Exception("Note not found.")
+            logger.info(f"Note {note_id} deleted successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting note {note_id}: {e}")
+            raise
+
+    def get_similar_notes(
+        self,
+        query_embedding: List[float],
+        similarity_threshold: float,
+        limit: int,
+        use_pagerank_weighting: bool = False,
+        owner_username: str = ""
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve notes similar to the query_embedding based on cosine similarity.
+        Optionally weight the similarity by PageRank scores.
+        Filters notes by owner_username.
+        """
+        try:
+            # Convert query_embedding to numpy array
+            query_emb = np.array(query_embedding).reshape(1, -1)
+
+            # Fetch notes belonging to the user with embeddings
+            notes_cursor = self.notes.find(
+                {
+                    "embedding": {"$exists": True, "$ne": []},
+                    "owner_username": owner_username
+                }
+            )
+            similar_notes = []
+            for note in notes_cursor:
+                note_id = note["_id"]
+                embedding = np.array(note["embedding"]).reshape(1, -1)
+                similarity = cosine_similarity(query_emb, embedding)[0][0]
+                if similarity >= similarity_threshold:
+                    pagerank = note.get("pagerank", 0.0)
+                    if use_pagerank_weighting:
+                        weighted_similarity = similarity * pagerank
+                    else:
+                        weighted_similarity = similarity
+                    # Include all note fields in the result
+                    note_data = note.copy()
+                    note_data["id"] = str(note_data.pop("_id"))  # Ensure 'id' is a string
+                    note_data["similarity"] = similarity
+                    note_data["weighted_similarity"] = weighted_similarity
+                    similar_notes.append(note_data)
+
+            # Sort notes based on similarity or weighted_similarity
+            if use_pagerank_weighting:
+                similar_notes.sort(key=lambda x: x["weighted_similarity"], reverse=True)
+            else:
+                similar_notes.sort(key=lambda x: x["similarity"], reverse=True)
+
+            # Limit the number of results
+            limited_notes = similar_notes[:limit]
+            return limited_notes
+
+        except Exception as e:
+            logger.error(f"Error retrieving similar notes: {e}")
+            raise
+
+
     def get_cluster(self, cluster_id: str) -> Optional[Dict[str, Any]]:
         """
         Retrieve a single cluster by its ID.

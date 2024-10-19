@@ -492,6 +492,124 @@ async def create_note_endpoint(
         logger.error(f"Error creating note: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
+@app.delete("/notes/{note_id}", response_model=Dict[str, Any])
+async def delete_note_endpoint(
+    note_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """
+    Deletes a note with the given note_id if owned by the current user.
+    """
+    if not mongodb_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    try:
+        mongodb_conn.delete_note(note_id)
+        logger.info(f"Note deleted successfully: {note_id}")
+        return {"message": "Note deleted successfully."}
+    except Exception as e:
+        logger.error(f"Error deleting note {note_id}: {e}")
+        if str(e) == "Note not found.":
+            raise HTTPException(status_code=404, detail="Note not found.")
+        else:
+            raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/notes/{note_id}", response_model=NoteOutput)
+async def update_note_endpoint(
+    note_id: str,
+    note_input: NoteInput,
+    background_tasks: BackgroundTasks,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """
+    Updates a note with the given note_id if owned by the current user.
+    """
+    if not mongodb_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    try:
+        processed_content = preprocess_for_embedding(note_input.content)
+        model = get_sentence_transformer()
+        embedding = model.encode([processed_content], show_progress_bar=False)[0].tolist()
+
+        # Generate updated summary using LLM
+        llm_client = get_llm_client()
+        summary_prompt = Config.NOTE_SUMMARY_PROMPT_TEMPLATE.format(content=processed_content)
+        summary = await llm_client.generate_content(summary_prompt)
+
+        # Update note in MongoDB
+        mongodb_conn.update_note(
+            note_id=note_id,
+            content=note_input.content,
+            processed_content=processed_content,
+            embedding=embedding,
+            timestamp=note_input.timestamp,
+            summary=summary
+        )
+
+        # Update relationships and PageRank in the background
+        background_tasks.add_task(
+            mongodb_conn.update_relationships,
+            note_id,
+            Config.SIMILARITY_THRESHOLD_UPDATE_RELATIONSHIPS
+        )
+        background_tasks.add_task(compute_pagerank)
+        background_tasks.add_task(perform_clustering)
+
+        # Retrieve the updated note
+        updated_note = mongodb_conn.get_note_owned_by_user(note_id, current_user.username)
+        if not updated_note:
+            raise HTTPException(status_code=404, detail="Note not found after update.")
+
+        logger.info(f"Note updated successfully: {note_id}")
+        return NoteOutput(**updated_note)
+
+    except Exception as e:
+        logger.error(f"Error updating note {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/notes/{note_id}/similar", response_model=List[NoteOutput])
+async def get_similar_notes_endpoint(
+    note_id: str,
+    limit: int = 5,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """
+    Retrieves notes similar to the given note_id for the current user.
+    """
+    if not mongodb_conn.verify_connectivity():
+        raise HTTPException(status_code=500, detail="Database connection error")
+
+    try:
+        # Get the note to find similar notes for
+        note = mongodb_conn.get_note_owned_by_user(note_id, current_user.username)
+        if not note:
+            raise HTTPException(status_code=404, detail="Note not found")
+
+        embedding = note.get("embedding")
+        if not embedding:
+            raise HTTPException(status_code=500, detail="Note does not have an embedding.")
+
+        # Retrieve similar notes
+        similar_notes = mongodb_conn.get_similar_notes(
+            query_embedding=embedding,
+            similarity_threshold=Config.SIMILARITY_THRESHOLD_NOTE,
+            limit=limit,
+            use_pagerank_weighting=True,
+            owner_username=current_user.username
+        )
+        logger.info(f"Retrieved {len(similar_notes)} similar notes for note: {note_id}")
+
+        # Construct NoteOutput models
+        notes_output = [NoteOutput(**note_data) for note_data in similar_notes]
+
+        return notes_output
+
+    except Exception as e:
+        logger.error(f"Error retrieving similar notes for note {note_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    
 
 @app.post("/query", response_model=List[NoteOutput])
 async def query_notes(
