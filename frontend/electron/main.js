@@ -22,7 +22,7 @@ const createWindow = () => {
   mainWindow.loadURL(`${CONSTANTS.FRONTEND_HOST}#/`);
 
   // Open the DevTools. Turn off on deployment!!
-  mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools();
 };
 
 app.whenReady().then(() => {
